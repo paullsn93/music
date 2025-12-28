@@ -3,10 +3,9 @@
     這是一個單頁應用程式 (Single File Application)。
     請將此檔案內容直接儲存為 "index.html" (放在專案根目錄)。
     
-    本次更新功能：
-    1. 新增 Firebase Storage 支援，用於上傳圖片。
-    2. 新增歌曲介面改為「檔案上傳」，支援一次選取多張圖片 (上限 4 張)。
-    3. 播放介面支援顯示多張樂譜圖片，垂直排列。
+    本次更新功能 (2025/12/28)：
+    1. 【修正】上傳多張圖片時，會自動依照「檔名」排序 (page1 -> page2)，確保順序正確。
+    2. 【優化】大幅縮小 YouTube 影片播放器的顯示面積，將空間留給吉他譜。
 -->
 <!DOCTYPE html>
 <html lang="zh-TW">
@@ -251,7 +250,15 @@
             if (!isOpen) return null;
 
             const handleFileChange = (e) => {
-                const files = Array.from(e.target.files);
+                // 將 FileList 轉為 Array
+                let files = Array.from(e.target.files);
+                
+                // ★ 自動排序功能 ★
+                // 依照檔名排序 (支援 page1, page2, page10 這種數字順序)
+                files.sort((a, b) => {
+                    return a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
+                });
+
                 if (files.length > 4) {
                     setErrorMsg('最多只能上傳 4 張圖片');
                     return;
@@ -273,6 +280,7 @@
                 try {
                     const uploadedUrls = [];
                     // Upload each file to Firebase Storage
+                    // 這裡的 selectedFiles 已經排好序，所以 uploadedUrls 也會是正確的順序
                     for (const file of selectedFiles) {
                         const storageRef = storage.ref();
                         // 建立唯一的檔案路徑: tab_images/timestamp_filename
@@ -351,7 +359,7 @@
                                     />
                                     <label htmlFor="fileInput" className="cursor-pointer flex flex-col items-center justify-center gap-2">
                                         <Upload className="text-gray-400" size={32} />
-                                        <span className="text-sm text-indigo-400 font-medium">點擊選擇圖片</span>
+                                        <span className="text-sm text-indigo-400 font-medium">點擊選擇圖片 (自動排序檔名)</span>
                                         <span className="text-xs text-gray-500">已選擇: {selectedFiles.length} / 4 張</span>
                                     </label>
                                 </div>
@@ -359,6 +367,7 @@
                                     <div className="mt-2 space-y-1">
                                         {Array.from(selectedFiles).map((file, idx) => (
                                             <div key={idx} className="flex items-center gap-2 text-xs text-gray-300">
+                                                <span className="text-indigo-400 font-bold">{idx + 1}.</span>
                                                 <Image size={14} /> {file.name}
                                             </div>
                                         ))}
@@ -615,8 +624,11 @@
                                     className="flex-1 overflow-y-auto relative bg-gray-950 scroll-smooth"
                                     style={{ paddingBottom: '120px' }}
                                 >
+                                    {/* ★ 優化重點 ★
+                                        縮小 YouTube 播放器區域 (max-w-sm)，讓吉他譜有更多空間
+                                    */}
                                     {getYouTubeEmbedId(currentSong.sourceUrl) && (
-                                        <div className="w-full max-w-3xl mx-auto mt-4 px-4 mb-6">
+                                        <div className="w-full max-w-sm mx-auto mt-2 px-4 mb-4">
                                             <div className="aspect-video rounded-xl overflow-hidden shadow-2xl bg-black border border-gray-800">
                                                 <iframe 
                                                     width="100%" 
