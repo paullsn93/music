@@ -3,10 +3,10 @@
     這是一個單頁應用程式 (Single File Application)。
     請將此檔案內容直接儲存為 "index.html" (放在專案根目錄)。
     
-    本次更新功能 (2025/12/28 v2)：
-    1. 【新增】編輯功能：管理員可點擊鉛筆圖示修改歌名、連結，或增刪圖片 (不用刪除重建物件)。
-    2. 【優化】無段式速度：速度滑桿間距改為 0.1 (如 1.2x, 1.7x)。
-    3. 【新增】速度記憶：每首歌會自動儲存最後使用的滾動速度，下次開啟自動套用。
+    本次更新功能 (2025/12/30 v3)：
+    1. 【優化】移除佔版面的 YouTube 播放器，改為在頂部顯示「播放影片」連結 (點擊開新視窗)。
+    2. 【新增】搜尋功能支援「歌名長度」(輸入數字即可搜尋對應字數的歌)。
+    3. 【解除限制】吉他譜圖片上傳取消 4 張上限，可依需求動態增加。
 -->
 <!DOCTYPE html>
 <html lang="zh-TW">
@@ -110,11 +110,12 @@
             X: (props) => <IconBase {...props}><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></IconBase>,
             Upload: (props) => <IconBase {...props}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></IconBase>,
             Image: (props) => <IconBase {...props}><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></IconBase>,
-            Pencil: (props) => <IconBase {...props}><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></IconBase>
+            Pencil: (props) => <IconBase {...props}><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></IconBase>,
+            Video: (props) => <IconBase {...props}><path d="m22 8-6 4 6 4V8Z"/><rect x="2" y="6" width="14" height="12" rx="2" ry="2"/></IconBase>
         };
 
         const { 
-            Music, Search, Plus, Trash2, Settings, Play, Pause, ExternalLink, Lock, LogOut, Guitar, Youtube, X, Upload, Image, Pencil
+            Music, Search, Plus, Trash2, Settings, Play, Pause, ExternalLink, Lock, LogOut, Guitar, Youtube, X, Upload, Image, Pencil, Video
         } = Icons;
 
 
@@ -277,11 +278,8 @@
                     return a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
                 });
                 
-                // 檢查總數量 (舊圖 + 新圖)
-                if (existingTabUrls.length + files.length > 4) {
-                    setErrorMsg(`總共最多只能有 4 張圖片 (目前已有 ${existingTabUrls.length} 張)`);
-                    return;
-                }
+                // ★★★ 修改：移除數量上限檢查 ★★★
+                // (舊代碼: if (existingTabUrls.length + files.length > 4) ...)
                 
                 setSelectedFiles(files);
                 setErrorMsg('');
@@ -374,7 +372,7 @@
 
                             {/* 圖片管理區 */}
                             <div>
-                                <label className="block text-sm text-gray-400 mb-2">吉他譜圖片 (上限 4 張)</label>
+                                <label className="block text-sm text-gray-400 mb-2">吉他譜圖片 (可上傳多張)</label>
                                 
                                 {/* 既有圖片列表 (編輯模式) */}
                                 {existingTabUrls.length > 0 && (
@@ -395,8 +393,8 @@
                                     </div>
                                 )}
 
-                                {/* 上傳區 */}
-                                <div className={`border-2 border-dashed border-gray-600 rounded-lg p-6 text-center hover:border-indigo-500 transition-colors bg-gray-700/30 ${existingTabUrls.length >= 4 ? 'opacity-50 pointer-events-none' : ''}`}>
+                                {/* 上傳區 - 移除上限邏輯 */}
+                                <div className={`border-2 border-dashed border-gray-600 rounded-lg p-6 text-center hover:border-indigo-500 transition-colors bg-gray-700/30`}>
                                     <input 
                                         type="file" 
                                         id="fileInput"
@@ -404,13 +402,13 @@
                                         accept="image/*"
                                         className="hidden"
                                         onChange={handleFileChange}
-                                        disabled={uploading || existingTabUrls.length >= 4}
+                                        disabled={uploading}
                                     />
                                     <label htmlFor="fileInput" className="cursor-pointer flex flex-col items-center justify-center gap-2">
                                         <Upload className="text-gray-400" size={32} />
                                         <span className="text-sm text-indigo-400 font-medium">點擊上傳新圖片</span>
                                         <span className="text-xs text-gray-500">
-                                            {existingTabUrls.length >= 4 ? '已達上限' : `可再上傳 ${4 - existingTabUrls.length - selectedFiles.length} 張`}
+                                            可依需求動態增加
                                         </span>
                                     </label>
                                 </div>
@@ -601,17 +599,16 @@
                 setIsModalOpen(true);
             };
 
-            const getYouTubeEmbedId = (url) => {
-                if(!url) return null;
-                const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/;
-                const match = url.match(regExp);
-                return (match && match[2].length === 11) ? match[2] : null;
-            };
-
-            const filteredSongs = songs.filter(song => 
-                song.title.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                song.artist.toLowerCase().includes(searchTerm.toLowerCase())
-            );
+            const filteredSongs = songs.filter(song => {
+                const term = searchTerm.toLowerCase();
+                const title = song.title.toLowerCase();
+                const artist = song.artist.toLowerCase();
+                
+                // ★★★ 搜尋邏輯更新：包含字串 或 字數相符 ★★★
+                const isLengthMatch = (song.titleLength || song.title.length).toString() === term;
+                
+                return title.includes(term) || artist.includes(term) || isLengthMatch;
+            });
 
             if (!userRole) {
                 return <LoginScreen onLogin={setUserRole} />;
@@ -645,7 +642,7 @@
                                 <Search className="absolute left-3 top-2.5 text-gray-500" size={18} />
                                 <input 
                                     type="text" 
-                                    placeholder="搜尋歌名或歌手..." 
+                                    placeholder="搜尋歌名、歌手或字數(如:4)..." 
                                     className="w-full bg-gray-800 border border-gray-700 rounded-lg pl-10 pr-4 py-2 text-sm text-white focus:ring-1 focus:ring-indigo-500 outline-none"
                                     value={searchTerm}
                                     onChange={(e) => setSearchTerm(e.target.value)}
@@ -724,16 +721,17 @@
                                         <p className="text-sm text-indigo-400">{currentSong.artist}</p>
                                     </div>
 
+                                    {/* ★★★ 修改：移除 Iframe，改為上方顯示影片連結 ★★★ */}
                                     <div className="flex items-center gap-2">
                                         {currentSong.sourceUrl && (
                                             <a 
                                                 href={currentSong.sourceUrl} 
                                                 target="_blank" 
                                                 rel="noreferrer"
-                                                className="hidden md:flex items-center gap-2 bg-red-600/10 hover:bg-red-600/20 text-red-500 px-3 py-1.5 rounded-full text-sm font-medium transition"
+                                                className="flex items-center gap-2 bg-red-600/10 hover:bg-red-600/20 text-red-500 px-3 py-1.5 rounded-full text-sm font-medium transition cursor-pointer border border-red-900/30"
                                             >
-                                                <Music size={16} /> 
-                                                <span>YouTube Music</span>
+                                                <Video size={16} /> 
+                                                <span>播放影片 (新視窗)</span>
                                                 <ExternalLink size={14} />
                                             </a>
                                         )}
@@ -745,24 +743,10 @@
                                     className="flex-1 overflow-y-auto relative bg-gray-950 scroll-smooth"
                                     style={{ paddingBottom: '120px' }}
                                 >
-                                    {getYouTubeEmbedId(currentSong.sourceUrl) && (
-                                        <div className="w-full max-w-sm mx-auto mt-2 px-4 mb-4">
-                                            <div className="aspect-video rounded-xl overflow-hidden shadow-2xl bg-black border border-gray-800">
-                                                <iframe 
-                                                    width="100%" 
-                                                    height="100%" 
-                                                    src={`https://www.youtube.com/embed/${getYouTubeEmbedId(currentSong.sourceUrl)}`}
-                                                    title="YouTube video player" 
-                                                    frameBorder="0" 
-                                                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
-                                                    allowFullScreen
-                                                ></iframe>
-                                            </div>
-                                        </div>
-                                    )}
+                                    {/* ★★★ 移除：原先的 YouTube Iframe 區塊已刪除 ★★★ */}
 
                                     {/* Tab Images */}
-                                    <div className="max-w-4xl mx-auto px-2 md:px-4 space-y-4">
+                                    <div className="max-w-4xl mx-auto px-2 md:px-4 space-y-4 pt-4">
                                         {currentSong.tabUrls && currentSong.tabUrls.length > 0 ? (
                                             currentSong.tabUrls.map((url, index) => (
                                                 <img 
@@ -791,7 +775,7 @@
                                     </div>
                                 </div>
 
-                                {/* Floating Control Bar */}
+                                {/* Floating Control Bar (保留自動捲動功能) */}
                                 <div className="absolute bottom-6 left-1/2 transform -translate-x-1/2 bg-gray-800/90 backdrop-blur border border-gray-700 p-2 md:p-3 rounded-2xl shadow-2xl z-30 flex items-center gap-4 min-w-[300px] justify-between animate-fade-in">
                                     <button 
                                         onClick={() => setIsScrolling(!isScrolling)}
@@ -816,12 +800,6 @@
                                             className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-indigo-500"
                                         />
                                     </div>
-
-                                    {currentSong.sourceUrl && (
-                                        <a href={currentSong.sourceUrl} target="_blank" className="md:hidden p-2 text-gray-400 hover:text-white">
-                                            <Music size={20} />
-                                        </a>
-                                    )}
                                 </div>
                             </>
                         ) : (
