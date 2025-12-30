@@ -3,10 +3,11 @@
     這是一個單頁應用程式 (Single File Application)。
     請將此檔案內容直接儲存為 "index.html" (放在專案根目錄)。
     
-    本次更新功能 (2025/12/30 v3)：
-    1. 【優化】移除佔版面的 YouTube 播放器，改為在頂部顯示「播放影片」連結 (點擊開新視窗)。
-    2. 【新增】搜尋功能支援「歌名長度」(輸入數字即可搜尋對應字數的歌)。
-    3. 【解除限制】吉他譜圖片上傳取消 4 張上限，可依需求動態增加。
+    本次更新功能 (2025/12/30 v4)：
+    1. 【介面大改】將 YouTube 播放器整合至頂部標題列 (Headless Mode)。
+    2. 【新增功能】頂部新增 [播放/暫停] 按鈕，直接控制背景音樂。
+    3. 【新增功能】頂部新增「影片名稱」連結，點擊可開啟新視窗觀看。
+    4. 【保留】隱藏了實體 Iframe，釋放更多空間給吉他譜。
 -->
 <!DOCTYPE html>
 <html lang="zh-TW">
@@ -235,12 +236,11 @@
                 artist: '',
                 sourceUrl: '',
             });
-            const [selectedFiles, setSelectedFiles] = useState([]); // 新上傳的檔案
-            const [existingTabUrls, setExistingTabUrls] = useState([]); // 編輯模式下，既有的圖片連結
+            const [selectedFiles, setSelectedFiles] = useState([]); 
+            const [existingTabUrls, setExistingTabUrls] = useState([]); 
             const [uploading, setUploading] = useState(false);
             const [errorMsg, setErrorMsg] = useState('');
 
-            // Reset or Prefill data
             useEffect(() => {
                 if (isOpen) {
                     setErrorMsg('');
@@ -253,7 +253,6 @@
                             artist: initialData.artist || '',
                             sourceUrl: initialData.sourceUrl || '',
                         });
-                        // 處理舊格式(單張)與新格式(多張)的相容性
                         if (initialData.tabUrls && Array.isArray(initialData.tabUrls)) {
                             setExistingTabUrls(initialData.tabUrls);
                         } else if (initialData.tabUrl) {
@@ -262,7 +261,6 @@
                             setExistingTabUrls([]);
                         }
                     } else {
-                        // Add mode
                         setFormData({ title: '', artist: '', sourceUrl: '' });
                         setExistingTabUrls([]);
                     }
@@ -273,13 +271,9 @@
 
             const handleFileChange = (e) => {
                 let files = Array.from(e.target.files);
-                // 智慧排序
                 files.sort((a, b) => {
                     return a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
                 });
-                
-                // ★★★ 修改：移除數量上限檢查 ★★★
-                // (舊代碼: if (existingTabUrls.length + files.length > 4) ...)
                 
                 setSelectedFiles(files);
                 setErrorMsg('');
@@ -292,7 +286,6 @@
             const handleSubmit = async (e) => {
                 e.preventDefault();
                 
-                // 驗證
                 if (existingTabUrls.length === 0 && selectedFiles.length === 0) {
                     setErrorMsg('請至少保留或上傳一張圖片');
                     return;
@@ -303,8 +296,6 @@
 
                 try {
                     const uploadedUrls = [];
-                    
-                    // Upload new files
                     for (const file of selectedFiles) {
                         const storageRef = storage.ref();
                         const fileRef = storageRef.child(`tab_images/${Date.now()}_${file.name}`);
@@ -313,15 +304,13 @@
                         uploadedUrls.push(downloadUrl);
                     }
 
-                    // 合併舊圖與新圖
                     const finalTabUrls = [...existingTabUrls, ...uploadedUrls];
 
                     const songData = {
                         ...formData,
                         titleLength: formData.title.length,
                         tabUrls: finalTabUrls,
-                        tabUrl: finalTabUrls[0], // 相容性欄位
-                        // 如果是新增模式，加入建立時間；編輯模式不更新建立時間
+                        tabUrl: finalTabUrls[0], 
                         ...(mode === 'add' ? { createdAt: new Date().toISOString() } : {})
                     };
 
@@ -373,8 +362,6 @@
                             {/* 圖片管理區 */}
                             <div>
                                 <label className="block text-sm text-gray-400 mb-2">吉他譜圖片 (可上傳多張)</label>
-                                
-                                {/* 既有圖片列表 (編輯模式) */}
                                 {existingTabUrls.length > 0 && (
                                     <div className="mb-3 space-y-2">
                                         <p className="text-xs text-gray-500">已存在的圖片 (點擊右側 X 刪除):</p>
@@ -393,7 +380,6 @@
                                     </div>
                                 )}
 
-                                {/* 上傳區 - 移除上限邏輯 */}
                                 <div className={`border-2 border-dashed border-gray-600 rounded-lg p-6 text-center hover:border-indigo-500 transition-colors bg-gray-700/30`}>
                                     <input 
                                         type="file" 
@@ -459,7 +445,12 @@
             const [isScrolling, setIsScrolling] = useState(false);
             const [scrollSpeed, setScrollSpeed] = useState(1); 
             const scrollContainerRef = useRef(null);
-            const saveSpeedTimeoutRef = useRef(null); // 用於 Debounce 儲存速度
+            const saveSpeedTimeoutRef = useRef(null); 
+
+            // ★★★ YouTube Player State ★★★
+            const [ytPlayer, setYtPlayer] = useState(null);
+            const [ytIsPlaying, setYtIsPlaying] = useState(false);
+            const playerContainerRef = useRef(null); // Ref for the hidden div
 
             // Initialize Auth & Data
             useEffect(() => {
@@ -507,12 +498,82 @@
                 return () => unsubscribeAuth();
             }, []);
 
+            // ★★★ YouTube API Initialization ★★★
+            useEffect(() => {
+                if (!window.YT) {
+                    const tag = document.createElement('script');
+                    tag.src = "https://www.youtube.com/iframe_api";
+                    const firstScriptTag = document.getElementsByTagName('script')[0];
+                    firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
+                }
+            }, []);
+
+            // Helper to get video ID
+            const getYouTubeEmbedId = (url) => {
+                if(!url) return null;
+                const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/;
+                const match = url.match(regExp);
+                return (match && match[2].length === 11) ? match[2] : null;
+            };
+
+            // ★★★ Sync Player with Song ★★★
+            useEffect(() => {
+                const videoId = currentSong ? getYouTubeEmbedId(currentSong.sourceUrl) : null;
+
+                if (videoId) {
+                    if (ytPlayer && ytPlayer.loadVideoById) {
+                        // Player exists, load new video
+                        ytPlayer.loadVideoById(videoId);
+                        ytPlayer.pauseVideo(); // Start paused or auto-play if preferred
+                    } else if (window.YT && window.YT.Player && !ytPlayer) {
+                        // Initialize player if not exists
+                        // Ensure the div exists
+                        if (playerContainerRef.current) {
+                             const newPlayer = new window.YT.Player(playerContainerRef.current, {
+                                height: '1',
+                                width: '1', // Almost invisible
+                                videoId: videoId,
+                                playerVars: {
+                                    'playsinline': 1,
+                                    'controls': 0 // Hide native controls
+                                },
+                                events: {
+                                    'onReady': (event) => setYtPlayer(event.target),
+                                    'onStateChange': (event) => {
+                                        setYtIsPlaying(event.data === window.YT.PlayerState.PLAYING);
+                                    }
+                                }
+                            });
+                        }
+                    }
+                } else {
+                    // Stop if no video
+                    if (ytPlayer && ytPlayer.stopVideo) {
+                        ytPlayer.stopVideo();
+                        setYtIsPlaying(false);
+                    }
+                }
+            }, [currentSong]); // Only re-run when song changes
+
+            // Global callback requirement for YouTube API (fallback)
+            window.onYouTubeIframeAPIReady = () => {
+                // This might trigger before component mounts, handled in effect
+            };
+
+            const toggleYtPlay = () => {
+                if (!ytPlayer) return;
+                if (ytIsPlaying) {
+                    ytPlayer.pauseVideo();
+                } else {
+                    ytPlayer.playVideo();
+                }
+            };
+
             // Auto Scroll Logic
             useEffect(() => {
                 let animationFrameId;
                 const scroll = () => {
                     if (scrollContainerRef.current) {
-                        // 速度微調：基礎速度 0.3 * 倍率
                         scrollContainerRef.current.scrollTop += (scrollSpeed * 0.3);
                     }
                     animationFrameId = requestAnimationFrame(scroll);
@@ -523,36 +584,28 @@
                 return () => cancelAnimationFrame(animationFrameId);
             }, [isScrolling, scrollSpeed, currentSong]);
 
-            // 切換歌曲時，讀取該歌曲的 savedSpeed
             useEffect(() => {
                 if (currentSong) {
-                    // 如果歌曲有儲存速度，則使用該速度，否則預設 1
                     const saved = currentSong.savedSpeed !== undefined ? currentSong.savedSpeed : 1;
                     setScrollSpeed(saved);
                     setIsScrolling(false);
                 }
             }, [currentSong]);
 
-            // 儲存速度的邏輯 (Debounce: 使用者停止調整 1 秒後才寫入資料庫)
             const handleSpeedChange = (newSpeed) => {
                 setScrollSpeed(newSpeed);
-                
                 if (currentSong) {
                     if (saveSpeedTimeoutRef.current) {
                         clearTimeout(saveSpeedTimeoutRef.current);
                     }
-                    
                     saveSpeedTimeoutRef.current = setTimeout(async () => {
                         try {
                             const collectionRef = getSongsCollection();
                             await collectionRef.doc(currentSong.id).update({
                                 savedSpeed: newSpeed
                             });
-                            console.log("Speed saved:", newSpeed);
-                        } catch (err) {
-                            console.error("Failed to save speed:", err);
-                        }
-                    }, 1000); // 1秒後儲存
+                        } catch (err) {}
+                    }, 1000);
                 }
             };
 
@@ -561,10 +614,8 @@
                 if (modalMode === 'add') {
                     await collectionRef.add(songData);
                 } else {
-                    // Edit mode
                     if (editingSong) {
                         await collectionRef.doc(editingSong.id).update(songData);
-                        // 如果正在播放這首歌，更新當前播放狀態
                         if (currentSong && currentSong.id === editingSong.id) {
                             setCurrentSong({ ...currentSong, ...songData });
                         }
@@ -576,7 +627,6 @@
                 e.stopPropagation();
                 if (userRole !== 'admin') return;
                 if (!confirm("確定要刪除這首歌嗎？")) return;
-                
                 try {
                     const collectionRef = getSongsCollection();
                     await collectionRef.doc(songId).delete();
@@ -603,10 +653,7 @@
                 const term = searchTerm.toLowerCase();
                 const title = song.title.toLowerCase();
                 const artist = song.artist.toLowerCase();
-                
-                // ★★★ 搜尋邏輯更新：包含字串 或 字數相符 ★★★
                 const isLengthMatch = (song.titleLength || song.title.length).toString() === term;
-                
                 return title.includes(term) || artist.includes(term) || isLengthMatch;
             });
 
@@ -675,30 +722,15 @@
                                             </div>
                                             {userRole === 'admin' && (
                                                 <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition">
-                                                    {/* 編輯按鈕 */}
-                                                    <button 
-                                                        onClick={(e) => openEditModal(e, song)}
-                                                        className="p-1.5 text-gray-500 hover:text-indigo-400 transition"
-                                                    >
-                                                        <Pencil size={16} />
-                                                    </button>
-                                                    {/* 刪除按鈕 */}
-                                                    <button 
-                                                        onClick={(e) => handleDeleteSong(e, song.id)}
-                                                        className="p-1.5 text-gray-500 hover:text-red-400 transition"
-                                                    >
-                                                        <Trash2 size={16} />
-                                                    </button>
+                                                    <button onClick={(e) => openEditModal(e, song)} className="p-1.5 text-gray-500 hover:text-indigo-400 transition"><Pencil size={16} /></button>
+                                                    <button onClick={(e) => handleDeleteSong(e, song.id)} className="p-1.5 text-gray-500 hover:text-red-400 transition"><Trash2 size={16} /></button>
                                                 </div>
                                             )}
                                         </div>
                                         <div className="flex items-center gap-3 mt-2">
                                             <span className="text-xs text-gray-600 bg-gray-800/50 px-1.5 py-0.5 rounded">字數: {song.titleLength || song.title.length}</span>
                                             {song.sourceUrl && <Youtube size={12} className="text-gray-600" />}
-                                            {/* 顯示已儲存的速度 (若有) */}
-                                            {song.savedSpeed && (
-                                                <span className="text-[10px] text-indigo-500/70 border border-indigo-900/50 px-1 rounded">{song.savedSpeed}x</span>
-                                            )}
+                                            {song.savedSpeed && (<span className="text-[10px] text-indigo-500/70 border border-indigo-900/50 px-1 rounded">{song.savedSpeed}x</span>)}
                                         </div>
                                     </div>
                                 ))
@@ -710,29 +742,44 @@
                     <div className={`flex-1 flex flex-col h-full relative bg-gray-950 ${!currentSong ? 'hidden md:flex' : 'flex'}`}>
                         {currentSong ? (
                             <>
+                                {/* Header with embedded YouTube Controls */}
                                 <div className="h-16 border-b border-gray-800 bg-gray-900/95 backdrop-blur flex items-center justify-between px-4 md:px-6 z-20 flex-shrink-0">
-                                    <button onClick={() => setCurrentSong(null)} className="md:hidden text-gray-400 hover:text-white mr-2">
-                                        ← 返回
-                                    </button>
-                                    
-                                    <div className="flex flex-col md:flex-row md:items-center gap-1 md:gap-4 overflow-hidden">
-                                        <h2 className="text-lg font-bold text-white truncate max-w-[200px] md:max-w-md">{currentSong.title}</h2>
-                                        <span className="hidden md:inline text-gray-600">|</span>
-                                        <p className="text-sm text-indigo-400">{currentSong.artist}</p>
+                                    <div className="flex items-center gap-4">
+                                        <button onClick={() => setCurrentSong(null)} className="md:hidden text-gray-400 hover:text-white">
+                                            ← 返回
+                                        </button>
+                                        
+                                        <div className="flex flex-col">
+                                            <h2 className="text-lg font-bold text-white truncate max-w-[150px] md:max-w-xs">{currentSong.title}</h2>
+                                            <p className="text-xs text-indigo-400">{currentSong.artist}</p>
+                                        </div>
                                     </div>
 
-                                    {/* ★★★ 修改：移除 Iframe，改為上方顯示影片連結 ★★★ */}
-                                    <div className="flex items-center gap-2">
+                                    {/* ★★★ YouTube Custom Controls & Link ★★★ */}
+                                    <div className="flex items-center gap-3">
+                                        {/* Play/Pause Button for hidden player */}
+                                        {currentSong.sourceUrl && getYouTubeEmbedId(currentSong.sourceUrl) && (
+                                            <button 
+                                                onClick={toggleYtPlay}
+                                                className={`flex items-center gap-1 px-3 py-1.5 rounded-full text-sm font-bold transition border ${ytIsPlaying ? 'bg-red-600/20 text-red-400 border-red-600/30' : 'bg-gray-800 text-gray-300 border-gray-700 hover:bg-gray-700'}`}
+                                            >
+                                                {ytIsPlaying ? <Pause size={16} fill="currentColor" /> : <Play size={16} fill="currentColor" />}
+                                                <span className="hidden sm:inline">{ytIsPlaying ? '暫停' : '播放'}</span>
+                                            </button>
+                                        )}
+
+                                        {/* Video Link */}
                                         {currentSong.sourceUrl && (
                                             <a 
                                                 href={currentSong.sourceUrl} 
                                                 target="_blank" 
                                                 rel="noreferrer"
-                                                className="flex items-center gap-2 bg-red-600/10 hover:bg-red-600/20 text-red-500 px-3 py-1.5 rounded-full text-sm font-medium transition cursor-pointer border border-red-900/30"
+                                                className="flex items-center gap-2 text-indigo-400 hover:text-indigo-300 text-sm font-medium transition hover:underline"
                                             >
                                                 <Video size={16} /> 
-                                                <span>播放影片 (新視窗)</span>
-                                                <ExternalLink size={14} />
+                                                <span className="hidden sm:inline">影片: {currentSong.title}</span>
+                                                <span className="sm:hidden">影片</span>
+                                                <ExternalLink size={12} />
                                             </a>
                                         )}
                                     </div>
@@ -743,7 +790,11 @@
                                     className="flex-1 overflow-y-auto relative bg-gray-950 scroll-smooth"
                                     style={{ paddingBottom: '120px' }}
                                 >
-                                    {/* ★★★ 移除：原先的 YouTube Iframe 區塊已刪除 ★★★ */}
+                                    {/* ★★★ Hidden YouTube Player Mount Point ★★★ */}
+                                    {/* This div is used to mount the IFrame API player but is visually hidden */}
+                                    <div className="absolute top-0 left-0 w-0 h-0 overflow-hidden opacity-0 pointer-events-none">
+                                        <div ref={playerContainerRef}></div>
+                                    </div>
 
                                     {/* Tab Images */}
                                     <div className="max-w-4xl mx-auto px-2 md:px-4 space-y-4 pt-4">
@@ -775,7 +826,7 @@
                                     </div>
                                 </div>
 
-                                {/* Floating Control Bar (保留自動捲動功能) */}
+                                {/* Floating Control Bar */}
                                 <div className="absolute bottom-6 left-1/2 transform -translate-x-1/2 bg-gray-800/90 backdrop-blur border border-gray-700 p-2 md:p-3 rounded-2xl shadow-2xl z-30 flex items-center gap-4 min-w-[300px] justify-between animate-fade-in">
                                     <button 
                                         onClick={() => setIsScrolling(!isScrolling)}
@@ -789,7 +840,6 @@
                                             <span>滾動速度 (自動儲存)</span>
                                             <span className="text-indigo-400 font-bold">{scrollSpeed.toFixed(1)}x</span>
                                         </div>
-                                        {/* 無段式速度：step 改為 0.1 */}
                                         <input 
                                             type="range" 
                                             min="0.5" 
