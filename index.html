@@ -3,11 +3,8 @@
     這是一個單頁應用程式 (Single File Application)。
     請將此檔案內容直接儲存為 "index.html" (放在專案根目錄)。
     
-    本次更新功能 (2025/12/30 v4)：
-    1. 【介面大改】將 YouTube 播放器整合至頂部標題列 (Headless Mode)。
-    2. 【新增功能】頂部新增 [播放/暫停] 按鈕，直接控制背景音樂。
-    3. 【新增功能】頂部新增「影片名稱」連結，點擊可開啟新視窗觀看。
-    4. 【保留】隱藏了實體 Iframe，釋放更多空間給吉他譜。
+    本次更新功能 (2025/12/30 v5)：
+    1. 【介面優化】滾動控制列移至畫面「右下角」，並改為緊湊的直式設計，避免遮擋樂譜。
 -->
 <!DOCTYPE html>
 <html lang="zh-TW">
@@ -447,10 +444,10 @@
             const scrollContainerRef = useRef(null);
             const saveSpeedTimeoutRef = useRef(null); 
 
-            // ★★★ YouTube Player State ★★★
+            // YouTube Player State
             const [ytPlayer, setYtPlayer] = useState(null);
             const [ytIsPlaying, setYtIsPlaying] = useState(false);
-            const playerContainerRef = useRef(null); // Ref for the hidden div
+            const playerContainerRef = useRef(null); 
 
             // Initialize Auth & Data
             useEffect(() => {
@@ -498,7 +495,7 @@
                 return () => unsubscribeAuth();
             }, []);
 
-            // ★★★ YouTube API Initialization ★★★
+            // YouTube API
             useEffect(() => {
                 if (!window.YT) {
                     const tag = document.createElement('script');
@@ -508,7 +505,6 @@
                 }
             }, []);
 
-            // Helper to get video ID
             const getYouTubeEmbedId = (url) => {
                 if(!url) return null;
                 const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/;
@@ -516,26 +512,22 @@
                 return (match && match[2].length === 11) ? match[2] : null;
             };
 
-            // ★★★ Sync Player with Song ★★★
             useEffect(() => {
                 const videoId = currentSong ? getYouTubeEmbedId(currentSong.sourceUrl) : null;
 
                 if (videoId) {
                     if (ytPlayer && ytPlayer.loadVideoById) {
-                        // Player exists, load new video
                         ytPlayer.loadVideoById(videoId);
-                        ytPlayer.pauseVideo(); // Start paused or auto-play if preferred
+                        ytPlayer.pauseVideo(); 
                     } else if (window.YT && window.YT.Player && !ytPlayer) {
-                        // Initialize player if not exists
-                        // Ensure the div exists
                         if (playerContainerRef.current) {
                              const newPlayer = new window.YT.Player(playerContainerRef.current, {
                                 height: '1',
-                                width: '1', // Almost invisible
+                                width: '1', 
                                 videoId: videoId,
                                 playerVars: {
                                     'playsinline': 1,
-                                    'controls': 0 // Hide native controls
+                                    'controls': 0 
                                 },
                                 events: {
                                     'onReady': (event) => setYtPlayer(event.target),
@@ -547,18 +539,14 @@
                         }
                     }
                 } else {
-                    // Stop if no video
                     if (ytPlayer && ytPlayer.stopVideo) {
                         ytPlayer.stopVideo();
                         setYtIsPlaying(false);
                     }
                 }
-            }, [currentSong]); // Only re-run when song changes
+            }, [currentSong]); 
 
-            // Global callback requirement for YouTube API (fallback)
-            window.onYouTubeIframeAPIReady = () => {
-                // This might trigger before component mounts, handled in effect
-            };
+            window.onYouTubeIframeAPIReady = () => {};
 
             const toggleYtPlay = () => {
                 if (!ytPlayer) return;
@@ -755,9 +743,8 @@
                                         </div>
                                     </div>
 
-                                    {/* ★★★ YouTube Custom Controls & Link ★★★ */}
+                                    {/* YouTube Custom Controls & Link */}
                                     <div className="flex items-center gap-3">
-                                        {/* Play/Pause Button for hidden player */}
                                         {currentSong.sourceUrl && getYouTubeEmbedId(currentSong.sourceUrl) && (
                                             <button 
                                                 onClick={toggleYtPlay}
@@ -768,7 +755,6 @@
                                             </button>
                                         )}
 
-                                        {/* Video Link */}
                                         {currentSong.sourceUrl && (
                                             <a 
                                                 href={currentSong.sourceUrl} 
@@ -790,8 +776,7 @@
                                     className="flex-1 overflow-y-auto relative bg-gray-950 scroll-smooth"
                                     style={{ paddingBottom: '120px' }}
                                 >
-                                    {/* ★★★ Hidden YouTube Player Mount Point ★★★ */}
-                                    {/* This div is used to mount the IFrame API player but is visually hidden */}
+                                    {/* Hidden YouTube Player Mount Point */}
                                     <div className="absolute top-0 left-0 w-0 h-0 overflow-hidden opacity-0 pointer-events-none">
                                         <div ref={playerContainerRef}></div>
                                     </div>
@@ -826,30 +811,30 @@
                                     </div>
                                 </div>
 
-                                {/* Floating Control Bar */}
-                                <div className="absolute bottom-6 left-1/2 transform -translate-x-1/2 bg-gray-800/90 backdrop-blur border border-gray-700 p-2 md:p-3 rounded-2xl shadow-2xl z-30 flex items-center gap-4 min-w-[300px] justify-between animate-fade-in">
+                                {/* Floating Control Bar (右下角 compact 版) */}
+                                <div className="absolute bottom-6 right-6 bg-gray-800/90 backdrop-blur border border-gray-700 p-2 rounded-xl shadow-2xl z-30 flex flex-col items-center gap-2 w-auto animate-fade-in">
+                                    <div className="text-[10px] text-gray-400 font-medium">
+                                        <span className="text-indigo-400">{scrollSpeed.toFixed(1)}x</span>
+                                    </div>
+                                    
+                                    <input 
+                                        type="range" 
+                                        min="0.5" 
+                                        max="5.0" 
+                                        step="0.1" 
+                                        value={scrollSpeed}
+                                        onChange={(e) => handleSpeedChange(parseFloat(e.target.value))}
+                                        className="h-24 w-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-indigo-500"
+                                        style={{ writingMode: 'bt-lr', WebkitAppearance: 'slider-vertical' }}
+                                    />
+
                                     <button 
                                         onClick={() => setIsScrolling(!isScrolling)}
-                                        className={`p-3 rounded-full flex items-center justify-center transition-all ${isScrolling ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30' : 'bg-indigo-600 text-white hover:bg-indigo-500 shadow-lg shadow-indigo-500/30'}`}
+                                        className={`p-2 rounded-full flex items-center justify-center transition-all ${isScrolling ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30' : 'bg-indigo-600 text-white hover:bg-indigo-500 shadow-lg shadow-indigo-500/30'}`}
+                                        title={isScrolling ? "暫停滾動" : "開始滾動"}
                                     >
-                                        {isScrolling ? <Pause fill="currentColor" size={24} /> : <Play fill="currentColor" className="ml-1" size={24} />}
+                                        {isScrolling ? <Pause fill="currentColor" size={16} /> : <Play fill="currentColor" size={16} className="ml-0.5" />}
                                     </button>
-
-                                    <div className="flex-1 flex flex-col gap-1">
-                                        <div className="flex justify-between text-xs font-medium text-gray-400">
-                                            <span>滾動速度 (自動儲存)</span>
-                                            <span className="text-indigo-400 font-bold">{scrollSpeed.toFixed(1)}x</span>
-                                        </div>
-                                        <input 
-                                            type="range" 
-                                            min="0.5" 
-                                            max="5.0" 
-                                            step="0.1" 
-                                            value={scrollSpeed}
-                                            onChange={(e) => handleSpeedChange(parseFloat(e.target.value))}
-                                            className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-indigo-500"
-                                        />
-                                    </div>
                                 </div>
                             </>
                         ) : (
