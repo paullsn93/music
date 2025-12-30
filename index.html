@@ -3,8 +3,13 @@
     這是一個單頁應用程式 (Single File Application)。
     請將此檔案內容直接儲存為 "index.html" (放在專案根目錄)。
     
-    本次更新功能 (2025/12/30 v5)：
-    1. 【介面優化】滾動控制列移至畫面「右下角」，並改為緊湊的直式設計，避免遮擋樂譜。
+    本次更新功能 (2025/12/30 v6 - 譜架模式大升級)：
+    1. 【側邊欄】加入收摺功能。選歌後自動收為窄條，點擊可再展開。
+    2. 【分頁模式】預設開啟。
+       - 單圖：置中填滿。
+       - 多圖：左右雙頁顯示。
+       - 互動：按「空白鍵」翻下一頁。
+    3. 【模式切換】右下角新增按鈕，可切換「分頁模式(空白鍵)」或「捲動模式(自動滾動)」。
 -->
 <!DOCTYPE html>
 <html lang="zh-TW">
@@ -65,6 +70,14 @@
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
+        /* Hide scrollbar when in Paged Mode to clean up UI */
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
     </style>
 </head>
 <body class="bg-gray-900 text-gray-100 font-sans antialiased h-screen overflow-hidden">
@@ -109,11 +122,16 @@
             Upload: (props) => <IconBase {...props}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></IconBase>,
             Image: (props) => <IconBase {...props}><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></IconBase>,
             Pencil: (props) => <IconBase {...props}><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></IconBase>,
-            Video: (props) => <IconBase {...props}><path d="m22 8-6 4 6 4V8Z"/><rect x="2" y="6" width="14" height="12" rx="2" ry="2"/></IconBase>
+            Video: (props) => <IconBase {...props}><path d="m22 8-6 4 6 4V8Z"/><rect x="2" y="6" width="14" height="12" rx="2" ry="2"/></IconBase>,
+            BookOpen: (props) => <IconBase {...props}><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></IconBase>,
+            Scroll: (props) => <IconBase {...props}><path d="M8 19H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3"/><path d="M19 13v6a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-6"/><path d="M12 4v16"/></IconBase>,
+            ChevronLeft: (props) => <IconBase {...props}><path d="m15 18-6-6 6-6"/></IconBase>,
+            ChevronRight: (props) => <IconBase {...props}><path d="m9 18 6-6-6-6"/></IconBase>,
+            Menu: (props) => <IconBase {...props}><line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="18" y2="18"/></IconBase>
         };
 
         const { 
-            Music, Search, Plus, Trash2, Settings, Play, Pause, ExternalLink, Lock, LogOut, Guitar, Youtube, X, Upload, Image, Pencil, Video
+            Music, Search, Plus, Trash2, Settings, Play, Pause, ExternalLink, Lock, LogOut, Guitar, Youtube, X, Upload, Image, Pencil, Video, BookOpen, Scroll, ChevronLeft, ChevronRight, Menu
         } = Icons;
 
 
@@ -193,7 +211,7 @@
                             </div>
                         </div>
                         <h1 className="text-2xl font-bold text-center mb-2 text-white">吉他譜彈唱機 Pro</h1>
-                        <p className="text-gray-400 text-center mb-6 text-sm">私人收藏庫 • 自動滾動 • YouTube Music</p>
+                        <p className="text-gray-400 text-center mb-6 text-sm">私人收藏庫 • 分頁閱覽 • YouTube Music</p>
                         
                         <form onSubmit={handleLogin} className="space-y-4">
                             <div>
@@ -433,6 +451,11 @@
             const [loading, setLoading] = useState(true);
             const [searchTerm, setSearchTerm] = useState('');
             
+            // UI States
+            const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+            const [viewMode, setViewMode] = useState('paged'); // 'paged' or 'scroll'
+            const [pageIndex, setPageIndex] = useState(0); // For Paged Mode
+
             // Modal States
             const [isModalOpen, setIsModalOpen] = useState(false);
             const [modalMode, setModalMode] = useState('add');
@@ -557,8 +580,10 @@
                 }
             };
 
-            // Auto Scroll Logic
+            // Auto Scroll Logic (Only works in 'scroll' mode)
             useEffect(() => {
+                if (viewMode !== 'scroll') return;
+
                 let animationFrameId;
                 const scroll = () => {
                     if (scrollContainerRef.current) {
@@ -570,13 +595,28 @@
                     animationFrameId = requestAnimationFrame(scroll);
                 }
                 return () => cancelAnimationFrame(animationFrameId);
-            }, [isScrolling, scrollSpeed, currentSong]);
+            }, [isScrolling, scrollSpeed, currentSong, viewMode]);
 
+            // Spacebar Navigation (Only works in 'paged' mode)
+            useEffect(() => {
+                const handleKeyDown = (e) => {
+                    if (currentSong && viewMode === 'paged' && e.code === 'Space') {
+                        e.preventDefault(); // Prevent scrolling down
+                        nextPage();
+                    }
+                };
+                window.addEventListener('keydown', handleKeyDown);
+                return () => window.removeEventListener('keydown', handleKeyDown);
+            }, [currentSong, viewMode, pageIndex]);
+
+            // Reset state on song change
             useEffect(() => {
                 if (currentSong) {
                     const saved = currentSong.savedSpeed !== undefined ? currentSong.savedSpeed : 1;
                     setScrollSpeed(saved);
                     setIsScrolling(false);
+                    setPageIndex(0); // Reset page to start
+                    setIsSidebarOpen(false); // Auto collapse sidebar
                 }
             }, [currentSong]);
 
@@ -645,6 +685,37 @@
                 return title.includes(term) || artist.includes(term) || isLengthMatch;
             });
 
+            // Pagination Logic
+            const getCurrentPageImages = () => {
+                if (!currentSong) return [];
+                const urls = currentSong.tabUrls && currentSong.tabUrls.length > 0 ? currentSong.tabUrls : (currentSong.tabUrl ? [currentSong.tabUrl] : []);
+                
+                if (urls.length <= 1) return urls; // Single page mode
+
+                // Multi-page mode: return 2 images at a time
+                const start = pageIndex;
+                const end = start + 2;
+                return urls.slice(start, end);
+            };
+
+            const nextPage = () => {
+                if (!currentSong) return;
+                const urls = currentSong.tabUrls && currentSong.tabUrls.length > 0 ? currentSong.tabUrls : [];
+                if (pageIndex + 2 < urls.length) {
+                    setPageIndex(pageIndex + 2);
+                } else {
+                    // Loop back to start or stay at end? Let's stay at end to avoid accident reset
+                    // Or maybe loop if user wants to practice loop. Let's loop for convenience.
+                    setPageIndex(0); 
+                }
+            };
+
+            const prevPage = () => {
+                if (pageIndex - 2 >= 0) {
+                    setPageIndex(pageIndex - 2);
+                }
+            };
+
             if (!userRole) {
                 return <LoginScreen onLogin={setUserRole} />;
             }
@@ -652,77 +723,101 @@
             return (
                 <div className="flex h-screen bg-gray-900 overflow-hidden">
                     {/* Sidebar */}
-                    <div className={`${currentSong ? 'hidden md:flex' : 'flex'} flex-col w-full md:w-96 border-r border-gray-800 bg-gray-900 z-10 flex-shrink-0 transition-all duration-300`}>
-                        <div className="p-4 border-b border-gray-800 bg-gray-900">
-                            <div className="flex justify-between items-center mb-4">
-                                <h1 className="text-xl font-bold text-white flex items-center gap-2">
-                                    <Guitar className="text-indigo-500" /> 
-                                    譜庫
-                                    <span className="text-xs bg-gray-700 text-gray-300 px-2 py-0.5 rounded-full font-normal">
-                                        {songs.length}
-                                    </span>
-                                </h1>
-                                <div className="flex gap-2">
-                                    {userRole === 'admin' && (
-                                        <button onClick={openAddModal} className="p-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition shadow-lg">
-                                            <Plus size={18} />
-                                        </button>
-                                    )}
-                                    <button onClick={() => setUserRole(null)} className="p-2 text-gray-500 hover:text-gray-300">
-                                        <LogOut size={18} />
-                                    </button>
+                    <div 
+                        className={`${isSidebarOpen ? 'w-full md:w-96' : 'w-14'} flex-col border-r border-gray-800 bg-gray-900 z-10 flex-shrink-0 transition-all duration-300 ease-in-out overflow-hidden relative`}
+                    >
+                        {/* Collapsed View (Slim Bar) */}
+                        {!isSidebarOpen && (
+                            <div className="h-full flex flex-col items-center pt-4 gap-4">
+                                <button 
+                                    onClick={() => setIsSidebarOpen(true)}
+                                    className="p-2 bg-gray-800 text-indigo-400 rounded-lg hover:bg-gray-700 transition"
+                                    title="展開譜庫"
+                                >
+                                    <Menu size={20} />
+                                </button>
+                                <div className="text-xs text-gray-500 font-bold" style={{ writingMode: 'vertical-rl' }}>
+                                    譜庫列表
                                 </div>
                             </div>
-                            <div className="relative">
-                                <Search className="absolute left-3 top-2.5 text-gray-500" size={18} />
-                                <input 
-                                    type="text" 
-                                    placeholder="搜尋歌名、歌手或字數(如:4)..." 
-                                    className="w-full bg-gray-800 border border-gray-700 rounded-lg pl-10 pr-4 py-2 text-sm text-white focus:ring-1 focus:ring-indigo-500 outline-none"
-                                    value={searchTerm}
-                                    onChange={(e) => setSearchTerm(e.target.value)}
-                                />
-                            </div>
-                        </div>
+                        )}
 
-                        <div className="flex-1 overflow-y-auto p-2 space-y-2">
-                            {loading ? (
-                                <div className="text-center text-gray-500 mt-10">載入中...</div>
-                            ) : filteredSongs.length === 0 ? (
-                                <div className="text-center text-gray-500 mt-10">
-                                    <p>沒有找到歌曲</p>
-                                    {userRole === 'admin' && <p className="text-xs mt-2">點擊上方 + 新增</p>}
-                                </div>
-                            ) : (
-                                filteredSongs.map(song => (
-                                    <div 
-                                        key={song.id}
-                                        onClick={() => {
-                                            setCurrentSong(song);
-                                            setIsScrolling(false);
-                                        }}
-                                        className={`group p-3 rounded-xl cursor-pointer border border-transparent transition-all duration-200 ${currentSong?.id === song.id ? 'bg-indigo-900/30 border-indigo-500/50' : 'hover:bg-gray-800 border-gray-800'}`}
-                                    >
-                                        <div className="flex justify-between items-start">
-                                            <div>
-                                                <h3 className={`font-semibold ${currentSong?.id === song.id ? 'text-indigo-400' : 'text-gray-200'}`}>{song.title}</h3>
-                                                <p className="text-sm text-gray-500 mt-0.5">{song.artist}</p>
-                                            </div>
-                                            {userRole === 'admin' && (
-                                                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition">
-                                                    <button onClick={(e) => openEditModal(e, song)} className="p-1.5 text-gray-500 hover:text-indigo-400 transition"><Pencil size={16} /></button>
-                                                    <button onClick={(e) => handleDeleteSong(e, song.id)} className="p-1.5 text-gray-500 hover:text-red-400 transition"><Trash2 size={16} /></button>
-                                                </div>
-                                            )}
-                                        </div>
-                                        <div className="flex items-center gap-3 mt-2">
-                                            <span className="text-xs text-gray-600 bg-gray-800/50 px-1.5 py-0.5 rounded">字數: {song.titleLength || song.title.length}</span>
-                                            {song.sourceUrl && <Youtube size={12} className="text-gray-600" />}
-                                            {song.savedSpeed && (<span className="text-[10px] text-indigo-500/70 border border-indigo-900/50 px-1 rounded">{song.savedSpeed}x</span>)}
-                                        </div>
+                        {/* Expanded View */}
+                        <div className={`flex flex-col h-full ${!isSidebarOpen ? 'hidden' : ''}`}>
+                            <div className="p-4 border-b border-gray-800 bg-gray-900">
+                                <div className="flex justify-between items-center mb-4">
+                                    <h1 className="text-xl font-bold text-white flex items-center gap-2">
+                                        <Guitar className="text-indigo-500" /> 
+                                        譜庫
+                                        <span className="text-xs bg-gray-700 text-gray-300 px-2 py-0.5 rounded-full font-normal">
+                                            {songs.length}
+                                        </span>
+                                    </h1>
+                                    <div className="flex gap-2">
+                                        {userRole === 'admin' && (
+                                            <button onClick={openAddModal} className="p-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition shadow-lg">
+                                                <Plus size={18} />
+                                            </button>
+                                        )}
+                                        <button onClick={() => setUserRole(null)} className="p-2 text-gray-500 hover:text-gray-300">
+                                            <LogOut size={18} />
+                                        </button>
+                                        {/* 收摺按鈕 (in header) */}
+                                        <button onClick={() => setIsSidebarOpen(false)} className="p-2 text-gray-500 hover:text-gray-300 md:hidden">
+                                            <X size={18} />
+                                        </button>
                                     </div>
-                                ))
-                            )}
+                                </div>
+                                <div className="relative">
+                                    <Search className="absolute left-3 top-2.5 text-gray-500" size={18} />
+                                    <input 
+                                        type="text" 
+                                        placeholder="搜尋歌名、歌手或字數(如:4)..." 
+                                        className="w-full bg-gray-800 border border-gray-700 rounded-lg pl-10 pr-4 py-2 text-sm text-white focus:ring-1 focus:ring-indigo-500 outline-none"
+                                        value={searchTerm}
+                                        onChange={(e) => setSearchTerm(e.target.value)}
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="flex-1 overflow-y-auto p-2 space-y-2">
+                                {loading ? (
+                                    <div className="text-center text-gray-500 mt-10">載入中...</div>
+                                ) : filteredSongs.length === 0 ? (
+                                    <div className="text-center text-gray-500 mt-10">
+                                        <p>沒有找到歌曲</p>
+                                        {userRole === 'admin' && <p className="text-xs mt-2">點擊上方 + 新增</p>}
+                                    </div>
+                                ) : (
+                                    filteredSongs.map(song => (
+                                        <div 
+                                            key={song.id}
+                                            onClick={() => {
+                                                setCurrentSong(song);
+                                            }}
+                                            className={`group p-3 rounded-xl cursor-pointer border border-transparent transition-all duration-200 ${currentSong?.id === song.id ? 'bg-indigo-900/30 border-indigo-500/50' : 'hover:bg-gray-800 border-gray-800'}`}
+                                        >
+                                            <div className="flex justify-between items-start">
+                                                <div>
+                                                    <h3 className={`font-semibold ${currentSong?.id === song.id ? 'text-indigo-400' : 'text-gray-200'}`}>{song.title}</h3>
+                                                    <p className="text-sm text-gray-500 mt-0.5">{song.artist}</p>
+                                                </div>
+                                                {userRole === 'admin' && (
+                                                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition">
+                                                        <button onClick={(e) => openEditModal(e, song)} className="p-1.5 text-gray-500 hover:text-indigo-400 transition"><Pencil size={16} /></button>
+                                                        <button onClick={(e) => handleDeleteSong(e, song.id)} className="p-1.5 text-gray-500 hover:text-red-400 transition"><Trash2 size={16} /></button>
+                                                    </div>
+                                                )}
+                                            </div>
+                                            <div className="flex items-center gap-3 mt-2">
+                                                <span className="text-xs text-gray-600 bg-gray-800/50 px-1.5 py-0.5 rounded">字數: {song.titleLength || song.title.length}</span>
+                                                {song.sourceUrl && <Youtube size={12} className="text-gray-600" />}
+                                                {song.savedSpeed && (<span className="text-[10px] text-indigo-500/70 border border-indigo-900/50 px-1 rounded">{song.savedSpeed}x</span>)}
+                                            </div>
+                                        </div>
+                                    ))
+                                )}
+                            </div>
                         </div>
                     </div>
 
@@ -730,7 +825,7 @@
                     <div className={`flex-1 flex flex-col h-full relative bg-gray-950 ${!currentSong ? 'hidden md:flex' : 'flex'}`}>
                         {currentSong ? (
                             <>
-                                {/* Header with embedded YouTube Controls */}
+                                {/* Header */}
                                 <div className="h-16 border-b border-gray-800 bg-gray-900/95 backdrop-blur flex items-center justify-between px-4 md:px-6 z-20 flex-shrink-0">
                                     <div className="flex items-center gap-4">
                                         <button onClick={() => setCurrentSong(null)} className="md:hidden text-gray-400 hover:text-white">
@@ -743,8 +838,8 @@
                                         </div>
                                     </div>
 
-                                    {/* YouTube Custom Controls & Link */}
                                     <div className="flex items-center gap-3">
+                                        {/* Play Controls */}
                                         {currentSong.sourceUrl && getYouTubeEmbedId(currentSong.sourceUrl) && (
                                             <button 
                                                 onClick={toggleYtPlay}
@@ -771,70 +866,116 @@
                                     </div>
                                 </div>
 
+                                {/* Main Content (Tab Display) */}
                                 <div 
                                     ref={scrollContainerRef}
-                                    className="flex-1 overflow-y-auto relative bg-gray-950 scroll-smooth"
-                                    style={{ paddingBottom: '120px' }}
+                                    className={`flex-1 overflow-y-auto relative bg-gray-950 ${viewMode === 'paged' ? 'no-scrollbar' : 'scroll-smooth'}`}
+                                    style={{ paddingBottom: '0px' }} // Remove padding in paged mode
                                 >
-                                    {/* Hidden YouTube Player Mount Point */}
+                                    {/* Hidden YouTube Player */}
                                     <div className="absolute top-0 left-0 w-0 h-0 overflow-hidden opacity-0 pointer-events-none">
                                         <div ref={playerContainerRef}></div>
                                     </div>
 
-                                    {/* Tab Images */}
-                                    <div className="max-w-4xl mx-auto px-2 md:px-4 space-y-4 pt-4">
-                                        {currentSong.tabUrls && currentSong.tabUrls.length > 0 ? (
-                                            currentSong.tabUrls.map((url, index) => (
-                                                <img 
-                                                    key={index}
-                                                    src={url} 
-                                                    alt={`Guitar Tab Page ${index + 1}`} 
-                                                    className="w-full h-auto rounded-lg shadow-lg border border-gray-800 bg-white"
-                                                    onError={(e) => {
-                                                        e.target.onerror = null; 
-                                                        e.target.src = 'https://placehold.co/600x800/1f2937/white?text=Image+Error';
-                                                    }}
-                                                />
-                                            ))
-                                        ) : currentSong.tabUrl ? (
-                                            <img 
-                                                src={currentSong.tabUrl} 
-                                                alt="Guitar Tab" 
-                                                className="w-full h-auto rounded-lg shadow-lg border border-gray-800 bg-white"
-                                            />
-                                        ) : (
-                                            <div className="flex flex-col items-center justify-center py-20 text-gray-600 border-2 border-dashed border-gray-800 rounded-xl m-4">
-                                                <Guitar size={48} className="mb-2 opacity-50" />
-                                                <p>未設定吉他譜圖片</p>
+                                    {/* ★★★ Tab Render Logic ★★★ */}
+                                    <div className={`w-full h-full flex items-center justify-center ${viewMode === 'scroll' ? 'block pt-4 px-2 pb-32 max-w-4xl mx-auto space-y-4' : 'p-0'}`}>
+                                        
+                                        {/* SCROLL MODE: Stacked */}
+                                        {viewMode === 'scroll' && (
+                                            <>
+                                                {currentSong.tabUrls && currentSong.tabUrls.length > 0 ? (
+                                                    currentSong.tabUrls.map((url, index) => (
+                                                        <img key={index} src={url} alt={`Tab ${index}`} className="w-full h-auto rounded-lg bg-white" />
+                                                    ))
+                                                ) : currentSong.tabUrl ? (
+                                                    <img src={currentSong.tabUrl} alt="Tab" className="w-full h-auto rounded-lg bg-white" />
+                                                ) : (
+                                                    <div className="text-gray-500">無圖片</div>
+                                                )}
+                                            </>
+                                        )}
+
+                                        {/* PAGED MODE: Side-by-Side */}
+                                        {viewMode === 'paged' && (
+                                            <div className="w-full h-full flex items-center justify-center bg-gray-950">
+                                                {(() => {
+                                                    const visibleImages = getCurrentPageImages();
+                                                    if (visibleImages.length === 0) return <div className="text-gray-500">無圖片</div>;
+                                                    
+                                                    // Single Image Layout (Centered)
+                                                    if (visibleImages.length === 1) {
+                                                        return (
+                                                            <div className="w-full h-full flex items-center justify-center p-2">
+                                                                <img src={visibleImages[0]} className="max-w-full max-h-full object-contain rounded-lg shadow-2xl bg-white" />
+                                                            </div>
+                                                        );
+                                                    }
+                                                    
+                                                    // Two Images Layout (Split)
+                                                    return (
+                                                        <div className="w-full h-full flex flex-row">
+                                                            <div className="w-1/2 h-full flex items-center justify-center p-1 border-r border-gray-800">
+                                                                <img src={visibleImages[0]} className="max-w-full max-h-full object-contain rounded-lg bg-white" />
+                                                            </div>
+                                                            <div className="w-1/2 h-full flex items-center justify-center p-1">
+                                                                <img src={visibleImages[1]} className="max-w-full max-h-full object-contain rounded-lg bg-white" />
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })()}
+                                                
+                                                {/* Page Indicator Overlay */}
+                                                {(currentSong.tabUrls?.length > 2) && (
+                                                    <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 bg-gray-800/80 px-3 py-1 rounded-full text-xs text-white">
+                                                        頁數: {pageIndex + 1}-{Math.min(pageIndex + 2, currentSong.tabUrls.length)} / {currentSong.tabUrls.length}
+                                                        <span className="ml-2 text-gray-400">(按空白鍵翻頁)</span>
+                                                    </div>
+                                                )}
                                             </div>
                                         )}
                                     </div>
                                 </div>
 
-                                {/* Floating Control Bar (右下角 compact 版) */}
-                                <div className="absolute bottom-6 right-6 bg-gray-800/90 backdrop-blur border border-gray-700 p-2 rounded-xl shadow-2xl z-30 flex flex-col items-center gap-2 w-auto animate-fade-in">
-                                    <div className="text-[10px] text-gray-400 font-medium">
-                                        <span className="text-indigo-400">{scrollSpeed.toFixed(1)}x</span>
-                                    </div>
+                                {/* Floating Control Bar (Right Bottom) */}
+                                <div className="absolute bottom-6 right-6 z-30 flex flex-col items-end gap-3 animate-fade-in">
                                     
-                                    <input 
-                                        type="range" 
-                                        min="0.5" 
-                                        max="5.0" 
-                                        step="0.1" 
-                                        value={scrollSpeed}
-                                        onChange={(e) => handleSpeedChange(parseFloat(e.target.value))}
-                                        className="h-24 w-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-indigo-500"
-                                        style={{ writingMode: 'bt-lr', WebkitAppearance: 'slider-vertical' }}
-                                    />
-
+                                    {/* View Mode Toggle */}
                                     <button 
-                                        onClick={() => setIsScrolling(!isScrolling)}
-                                        className={`p-2 rounded-full flex items-center justify-center transition-all ${isScrolling ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30' : 'bg-indigo-600 text-white hover:bg-indigo-500 shadow-lg shadow-indigo-500/30'}`}
-                                        title={isScrolling ? "暫停滾動" : "開始滾動"}
+                                        onClick={() => setViewMode(viewMode === 'paged' ? 'scroll' : 'paged')}
+                                        className="bg-gray-800/90 backdrop-blur border border-gray-700 text-white p-3 rounded-full shadow-lg hover:bg-gray-700 transition flex items-center gap-2"
+                                        title={viewMode === 'paged' ? "切換至自動滾動模式" : "切換至分頁閱讀模式"}
                                     >
-                                        {isScrolling ? <Pause fill="currentColor" size={16} /> : <Play fill="currentColor" size={16} className="ml-0.5" />}
+                                        {viewMode === 'paged' ? <BookOpen size={20} /> : <Scroll size={20} />}
+                                        <span className="text-xs font-bold">{viewMode === 'paged' ? '分頁' : '捲動'}</span>
                                     </button>
+
+                                    {/* Scroll Controls (Only in Scroll Mode) */}
+                                    {viewMode === 'scroll' && (
+                                        <div className="bg-gray-800/90 backdrop-blur border border-gray-700 p-2 rounded-xl shadow-2xl flex flex-col items-center gap-2 w-auto">
+                                            <div className="text-[10px] text-gray-400 font-medium">
+                                                <span className="text-indigo-400">{scrollSpeed.toFixed(1)}x</span>
+                                            </div>
+                                            
+                                            <input 
+                                                type="range" 
+                                                min="0.5" 
+                                                max="5.0" 
+                                                step="0.1" 
+                                                value={scrollSpeed}
+                                                onChange={(e) => handleSpeedChange(parseFloat(e.target.value))}
+                                                className="h-24 w-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-indigo-500"
+                                                style={{ writingMode: 'bt-lr', WebkitAppearance: 'slider-vertical' }}
+                                            />
+
+                                            <button 
+                                                onClick={() => setIsScrolling(!isScrolling)}
+                                                className={`p-2 rounded-full flex items-center justify-center transition-all ${isScrolling ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30' : 'bg-indigo-600 text-white hover:bg-indigo-500 shadow-lg shadow-indigo-500/30'}`}
+                                                title={isScrolling ? "暫停滾動" : "開始滾動"}
+                                            >
+                                                {isScrolling ? <Pause fill="currentColor" size={16} /> : <Play fill="currentColor" size={16} className="ml-0.5" />}
+                                            </button>
+                                        </div>
+                                    )}
                                 </div>
                             </>
                         ) : (
