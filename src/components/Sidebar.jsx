@@ -15,7 +15,8 @@ const Sidebar = ({
     openEditModal,
     handleDeleteSong,
     loading,
-    filteredSongs
+    filteredSongs,
+    onOpenTools
 }) => {
     return (
         <div
