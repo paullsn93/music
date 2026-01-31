@@ -1,0 +1,1015 @@
+<!-- 
+    ★★★ 重要說明 ★★★
+    這是一個單頁應用程式 (Single File Application)。
+    請將此檔案內容直接儲存為 "index.html" (放在專案根目錄)。
+    
+    本次更新功能 (2025/12/30 v6 - 譜架模式大升級)：
+    1. 【側邊欄】加入收摺功能。選歌後自動收為窄條，點擊可再展開。
+    2. 【分頁模式】預設開啟。
+       - 單圖：置中填滿。
+       - 多圖：左右雙頁顯示。
+       - 互動：按「空白鍵」翻下一頁。
+    3. 【模式切換】右下角新增按鈕，可切換「分頁模式(空白鍵)」或「捲動模式(自動滾動)」。
+-->
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>吉他譜彈唱機 Pro</title>
+    
+    <!-- React & ReactDOM -->
+    <script crossorigin src="https://unpkg.com/react@18.2.0/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18.2.0/umd/react-dom.production.min.js"></script>
+    
+    <!-- Babel for JSX -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Firebase SDKs (Compat versions) -->
+    <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-storage-compat.js"></script>
+    
+    <style>
+        /* Custom scrollbar for dark theme */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #1f2937; 
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #4b5563; 
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #6b7280; 
+        }
+        .animate-fade-in {
+            animation: fadeIn 0.3s ease-in-out;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        /* Loading Spinner */
+        .spinner {
+            border: 3px solid rgba(255,255,255,0.3);
+            border-radius: 50%;
+            border-top: 3px solid #fff;
+            width: 20px;
+            height: 20px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        /* Hide scrollbar when in Paged Mode to clean up UI */
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-gray-100 font-sans antialiased h-screen overflow-hidden">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef, useMemo, useCallback } = React;
+        
+        // --- 內嵌圖示元件 ---
+        const IconBase = ({ children, size = 24, className = "", ...props }) => (
+            <svg 
+                xmlns="http://www.w3.org/2000/svg" 
+                width={size} 
+                height={size} 
+                viewBox="0 0 24 24" 
+                fill="none" 
+                stroke="currentColor" 
+                strokeWidth="2" 
+                strokeLinecap="round" 
+                strokeLinejoin="round" 
+                className={className} 
+                {...props}
+            >
+                {children}
+            </svg>
+        );
+
+        const Icons = {
+            Music: (props) => <IconBase {...props}><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></IconBase>,
+            Search: (props) => <IconBase {...props}><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></IconBase>,
+            Plus: (props) => <IconBase {...props}><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></IconBase>,
+            Trash2: (props) => <IconBase {...props}><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></IconBase>,
+            Settings: (props) => <IconBase {...props}><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.38a2 2 0 0 0-.73-2.73l-.15-.1a2 2 0 0 1-1-1.72v-.51a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></IconBase>,
+            Play: (props) => <IconBase {...props}><polygon points="5 3 19 12 5 21 5 3"/></IconBase>,
+            Pause: (props) => <IconBase {...props}><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></IconBase>,
+            ExternalLink: (props) => <IconBase {...props}><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></IconBase>,
+            Lock: (props) => <IconBase {...props}><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></IconBase>,
+            LogOut: (props) => <IconBase {...props}><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></IconBase>,
+            Guitar: (props) => <IconBase {...props}><path d="M6 21c3.866 0 7-3.134 7-7 0-3.866-3.134-7-7-7-3.866 0-7 3.134-7 7 0 3.866 3.134 7 7 7Z"/><path d="m11 11 10-10"/><path d="m17 7 4 4"/></IconBase>,
+            Youtube: (props) => <IconBase {...props}><path d="M22.54 6.42a2.78 2.78 0 0 0-1.94-2C18.88 4 12 4 12 4s-6.88 0-8.6.46a2.78 2.78 0 0 0-1.94 2A29 29 0 0 0 1 11.75a29 29 0 0 0 .46 5.33A2.78 2.78 0 0 0 3.4 19c1.72.46 8.6.46 8.6.46s6.88 0 8.6-.46a2.78 2.78 0 0 0 1.94-2 29 29 0 0 0 .46-5.25 29 29 0 0 0-.46-5.33z"/><polygon points="9.75 15.02 15.5 11.75 9.75 8.48 9.75 15.02"/></IconBase>,
+            X: (props) => <IconBase {...props}><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></IconBase>,
+            Upload: (props) => <IconBase {...props}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></IconBase>,
+            Image: (props) => <IconBase {...props}><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></IconBase>,
+            Pencil: (props) => <IconBase {...props}><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></IconBase>,
+            Video: (props) => <IconBase {...props}><path d="m22 8-6 4 6 4V8Z"/><rect x="2" y="6" width="14" height="12" rx="2" ry="2"/></IconBase>,
+            BookOpen: (props) => <IconBase {...props}><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></IconBase>,
+            Scroll: (props) => <IconBase {...props}><path d="M8 19H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3"/><path d="M19 13v6a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-6"/><path d="M12 4v16"/></IconBase>,
+            ChevronLeft: (props) => <IconBase {...props}><path d="m15 18-6-6 6-6"/></IconBase>,
+            ChevronRight: (props) => <IconBase {...props}><path d="m9 18 6-6-6-6"/></IconBase>,
+            Menu: (props) => <IconBase {...props}><line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="18" y2="18"/></IconBase>
+        };
+
+        const { 
+            Music, Search, Plus, Trash2, Settings, Play, Pause, ExternalLink, Lock, LogOut, Guitar, Youtube, X, Upload, Image, Pencil, Video, BookOpen, Scroll, ChevronLeft, ChevronRight, Menu
+        } = Icons;
+
+
+        // =========================================================================
+        // ★★★ 請在此處填入您的 FIREBASE 設定 ★★★
+        // =========================================================================
+        
+        const yourFirebaseConfig = {
+              apiKey: "AIzaSyAixRQFDfvQpcpz9WF7cClQNnLwI0c3i0Q",
+              authDomain: "music-4eef7.firebaseapp.com",
+              projectId: "music-4eef7",
+              storageBucket: "music-4eef7.firebasestorage.app",
+              messagingSenderId: "41798433400",
+              appId: "1:41798433400:web:acbbb075bf2877a1ef8b8d",
+              measurementId: "G-W01741QDKL"
+        };
+
+        const firebaseConfig = (typeof __firebase_config !== 'undefined') 
+            ? JSON.parse(__firebase_config) 
+            : yourFirebaseConfig;
+
+        // 初始化 Firebase
+        let app, auth, db, storage;
+        try {
+            if (typeof firebase !== 'undefined') {
+                if (!firebase.apps.length) {
+                    app = firebase.initializeApp(firebaseConfig);
+                } else {
+                    app = firebase.app();
+                }
+                auth = firebase.auth();
+                db = firebase.firestore();
+                storage = firebase.storage();
+                console.log("Firebase initialized successfully");
+            } else {
+                console.error("Firebase SDK not loaded properly.");
+            }
+        } catch (error) {
+            console.error("Firebase init error:", error);
+        }
+
+        const isPreviewEnv = typeof __app_id !== 'undefined';
+        const APP_ID = isPreviewEnv ? __app_id : 'guitar-tab-app';
+        
+        const getSongsCollection = () => {
+            if (isPreviewEnv) {
+                return db.collection('artifacts').doc(APP_ID).collection('public').doc('data').collection('songs');
+            } else {
+                return db.collection('songs');
+            }
+        };
+
+        // --- Components ---
+
+        // 1. Login/Security Screen
+        const LoginScreen = ({ onLogin }) => {
+            const [password, setPassword] = useState('');
+            const [error, setError] = useState('');
+
+            const handleLogin = (e) => {
+                e.preventDefault();
+                if (password === '1234') {
+                    onLogin('user');
+                } else if (password === 'admin') {
+                    onLogin('admin');
+                } else {
+                    setError('密碼錯誤，請重試');
+                }
+            };
+
+            return (
+                <div className="flex flex-col items-center justify-center h-screen bg-gray-900 p-4">
+                    <div className="bg-gray-800 p-8 rounded-2xl shadow-2xl max-w-md w-full border border-gray-700">
+                        <div className="flex justify-center mb-6">
+                            <div className="bg-indigo-600 p-4 rounded-full">
+                                <Guitar size={48} className="text-white" />
+                            </div>
+                        </div>
+                        <h1 className="text-2xl font-bold text-center mb-2 text-white">吉他譜彈唱機 Pro</h1>
+                        <p className="text-gray-400 text-center mb-6 text-sm">私人收藏庫 • 分頁閱覽 • YouTube Music</p>
+                        
+                        <form onSubmit={handleLogin} className="space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-400 mb-1">存取密碼</label>
+                                <div className="relative">
+                                    <Lock className="absolute left-3 top-3 text-gray-500" size={18} />
+                                    <input 
+                                        type="password" 
+                                        value={password}
+                                        onChange={(e) => setPassword(e.target.value)}
+                                        className="w-full pl-10 pr-4 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none text-white transition"
+                                        placeholder="請輸入密碼..."
+                                        autoFocus
+                                    />
+                                </div>
+                            </div>
+                            {error && <p className="text-red-400 text-sm text-center">{error}</p>}
+                            <button 
+                                type="submit" 
+                                className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-lg transition duration-200"
+                            >
+                                進入系統
+                            </button>
+                            <p className="text-xs text-gray-500 text-center mt-4">
+                                訪客密碼: 1234 <br/> 管理員密碼: admin
+                            </p>
+                        </form>
+                    </div>
+                </div>
+            );
+        };
+
+        // 2. Add/Edit Song Modal
+        const SongModal = ({ isOpen, onClose, onSave, mode = 'add', initialData = null }) => {
+            const [formData, setFormData] = useState({
+                title: '',
+                artist: '',
+                sourceUrl: '',
+            });
+            const [selectedFiles, setSelectedFiles] = useState([]); 
+            const [existingTabUrls, setExistingTabUrls] = useState([]); 
+            const [uploading, setUploading] = useState(false);
+            const [errorMsg, setErrorMsg] = useState('');
+
+            useEffect(() => {
+                if (isOpen) {
+                    setErrorMsg('');
+                    setSelectedFiles([]);
+                    setUploading(false);
+                    
+                    if (mode === 'edit' && initialData) {
+                        setFormData({
+                            title: initialData.title || '',
+                            artist: initialData.artist || '',
+                            sourceUrl: initialData.sourceUrl || '',
+                        });
+                        if (initialData.tabUrls && Array.isArray(initialData.tabUrls)) {
+                            setExistingTabUrls(initialData.tabUrls);
+                        } else if (initialData.tabUrl) {
+                            setExistingTabUrls([initialData.tabUrl]);
+                        } else {
+                            setExistingTabUrls([]);
+                        }
+                    } else {
+                        setFormData({ title: '', artist: '', sourceUrl: '' });
+                        setExistingTabUrls([]);
+                    }
+                }
+            }, [isOpen, mode, initialData]);
+
+            if (!isOpen) return null;
+
+            const handleFileChange = (e) => {
+                let files = Array.from(e.target.files);
+                files.sort((a, b) => {
+                    return a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
+                });
+                
+                setSelectedFiles(files);
+                setErrorMsg('');
+            };
+
+            const handleRemoveExisting = (indexToRemove) => {
+                setExistingTabUrls(prev => prev.filter((_, idx) => idx !== indexToRemove));
+            };
+
+            const handleSubmit = async (e) => {
+                e.preventDefault();
+                
+                if (existingTabUrls.length === 0 && selectedFiles.length === 0) {
+                    setErrorMsg('請至少保留或上傳一張圖片');
+                    return;
+                }
+                
+                setUploading(true);
+                setErrorMsg('');
+
+                try {
+                    const uploadedUrls = [];
+                    for (const file of selectedFiles) {
+                        const storageRef = storage.ref();
+                        const fileRef = storageRef.child(`tab_images/${Date.now()}_${file.name}`);
+                        await fileRef.put(file);
+                        const downloadUrl = await fileRef.getDownloadURL();
+                        uploadedUrls.push(downloadUrl);
+                    }
+
+                    const finalTabUrls = [...existingTabUrls, ...uploadedUrls];
+
+                    const songData = {
+                        ...formData,
+                        titleLength: formData.title.length,
+                        tabUrls: finalTabUrls,
+                        tabUrl: finalTabUrls[0], 
+                        ...(mode === 'add' ? { createdAt: new Date().toISOString() } : {})
+                    };
+
+                    await onSave(songData);
+                    onClose();
+                } catch (err) {
+                    console.error("Save error:", err);
+                    setErrorMsg('儲存失敗：' + err.message);
+                } finally {
+                    setUploading(false);
+                }
+            };
+
+            return (
+                <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+                    <div className="bg-gray-800 rounded-xl max-w-lg w-full p-6 border border-gray-700 animate-fade-in shadow-2xl overflow-y-auto max-h-[90vh]">
+                        <div className="flex justify-between items-center mb-6">
+                            <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                                {mode === 'add' ? <Plus size={20} className="text-indigo-400" /> : <Pencil size={20} className="text-indigo-400" />}
+                                {mode === 'add' ? '新增吉他譜' : '編輯吉他譜'}
+                            </h2>
+                            <button onClick={onClose} className="text-gray-400 hover:text-white">
+                                <X size={24} />
+                            </button>
+                        </div>
+                        <form onSubmit={handleSubmit} className="space-y-4">
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-sm text-gray-400 mb-1">歌名</label>
+                                    <input required type="text" className="w-full bg-gray-700 border border-gray-600 rounded p-2 text-white focus:border-indigo-500 outline-none" 
+                                        value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} disabled={uploading} />
+                                </div>
+                                <div>
+                                    <label className="block text-sm text-gray-400 mb-1">演唱者</label>
+                                    <input required type="text" className="w-full bg-gray-700 border border-gray-600 rounded p-2 text-white focus:border-indigo-500 outline-none" 
+                                        value={formData.artist} onChange={e => setFormData({...formData, artist: e.target.value})} disabled={uploading} />
+                                </div>
+                            </div>
+                            
+                            <div>
+                                <label className="block text-sm text-gray-400 mb-1">音樂來源 (YouTube Music 連結)</label>
+                                <div className="relative">
+                                    <Youtube className="absolute left-3 top-2.5 text-red-500" size={18} />
+                                    <input type="url" placeholder="https://music.youtube.com/..." className="w-full pl-10 bg-gray-700 border border-gray-600 rounded p-2 text-white focus:border-indigo-500 outline-none" 
+                                        value={formData.sourceUrl} onChange={e => setFormData({...formData, sourceUrl: e.target.value})} disabled={uploading} />
+                                </div>
+                            </div>
+
+                            {/* 圖片管理區 */}
+                            <div>
+                                <label className="block text-sm text-gray-400 mb-2">吉他譜圖片 (可上傳多張)</label>
+                                {existingTabUrls.length > 0 && (
+                                    <div className="mb-3 space-y-2">
+                                        <p className="text-xs text-gray-500">已存在的圖片 (點擊右側 X 刪除):</p>
+                                        {existingTabUrls.map((url, idx) => (
+                                            <div key={idx} className="flex items-center justify-between bg-gray-700/50 p-2 rounded border border-gray-600">
+                                                <div className="flex items-center gap-2 overflow-hidden">
+                                                    <span className="text-indigo-400 font-bold text-xs">#{idx + 1}</span>
+                                                    <img src={url} className="h-8 w-8 object-cover rounded" alt="thumb" />
+                                                    <span className="text-xs text-gray-400 truncate w-32">...{url.slice(-10)}</span>
+                                                </div>
+                                                <button type="button" onClick={() => handleRemoveExisting(idx)} className="text-red-400 hover:text-red-300 p-1">
+                                                    <X size={16} />
+                                                </button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+
+                                <div className={`border-2 border-dashed border-gray-600 rounded-lg p-6 text-center hover:border-indigo-500 transition-colors bg-gray-700/30`}>
+                                    <input 
+                                        type="file" 
+                                        id="fileInput"
+                                        multiple 
+                                        accept="image/*"
+                                        className="hidden"
+                                        onChange={handleFileChange}
+                                        disabled={uploading}
+                                    />
+                                    <label htmlFor="fileInput" className="cursor-pointer flex flex-col items-center justify-center gap-2">
+                                        <Upload className="text-gray-400" size={32} />
+                                        <span className="text-sm text-indigo-400 font-medium">點擊上傳新圖片</span>
+                                        <span className="text-xs text-gray-500">
+                                            可依需求動態增加
+                                        </span>
+                                    </label>
+                                </div>
+
+                                {selectedFiles.length > 0 && (
+                                    <div className="mt-2 space-y-1">
+                                        {Array.from(selectedFiles).map((file, idx) => (
+                                            <div key={idx} className="flex items-center gap-2 text-xs text-green-400">
+                                                <Plus size={12} /> 新增: {file.name}
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                            
+                            {errorMsg && <p className="text-red-400 text-sm">{errorMsg}</p>}
+
+                            <div className="pt-4 flex gap-3">
+                                <button type="button" onClick={onClose} disabled={uploading} className="flex-1 bg-gray-700 hover:bg-gray-600 text-white py-2 rounded-lg transition">取消</button>
+                                <button type="submit" disabled={uploading} className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white py-2 rounded-lg transition font-medium flex items-center justify-center gap-2">
+                                    {uploading ? (
+                                        <>
+                                            <div className="spinner"></div> 儲存中...
+                                        </>
+                                    ) : (mode === 'add' ? '新增入庫' : '儲存修改')}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            );
+        };
+
+        // 3. Main Application Component
+        const App = () => {
+            const [userRole, setUserRole] = useState(null); 
+            const [songs, setSongs] = useState([]);
+            const [currentSong, setCurrentSong] = useState(null);
+            const [loading, setLoading] = useState(true);
+            const [searchTerm, setSearchTerm] = useState('');
+            
+            // UI States
+            const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+            const [viewMode, setViewMode] = useState('paged'); // 'paged' or 'scroll'
+            const [pageIndex, setPageIndex] = useState(0); // For Paged Mode
+
+            // Modal States
+            const [isModalOpen, setIsModalOpen] = useState(false);
+            const [modalMode, setModalMode] = useState('add');
+            const [editingSong, setEditingSong] = useState(null);
+            
+            // Auto Scroll State
+            const [isScrolling, setIsScrolling] = useState(false);
+            const [scrollSpeed, setScrollSpeed] = useState(1); 
+            const scrollContainerRef = useRef(null);
+            const saveSpeedTimeoutRef = useRef(null); 
+
+            // YouTube Player State
+            const [ytPlayer, setYtPlayer] = useState(null);
+            const [ytIsPlaying, setYtIsPlaying] = useState(false);
+            const playerContainerRef = useRef(null); 
+
+            // Initialize Auth & Data
+            useEffect(() => {
+                if (!auth || !db) {
+                    setLoading(false);
+                    return;
+                }
+
+                const initAuth = async () => {
+                    try {
+                        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                            await auth.signInWithCustomToken(__initial_auth_token);
+                        } else {
+                            await auth.signInAnonymously();
+                        }
+                    } catch (error) {
+                        console.error("Auth Error:", error);
+                    }
+                };
+                initAuth();
+
+                const unsubscribeAuth = auth.onAuthStateChanged((user) => {
+                    if (user) {
+                        const collectionRef = getSongsCollection();
+                        const unsubscribeSongs = collectionRef.orderBy('createdAt', 'desc').onSnapshot((snapshot) => {
+                            const songsData = snapshot.docs.map(doc => ({
+                                id: doc.id,
+                                ...doc.data()
+                            }));
+                            setSongs(songsData);
+                            setLoading(false);
+                        }, (error) => {
+                            console.error("Error fetching songs:", error);
+                            if (error.code === 'failed-precondition') {
+                                collectionRef.onSnapshot(snap => {
+                                    setSongs(snap.docs.map(d => ({id: d.id, ...d.data()})));
+                                });
+                            }
+                            setLoading(false);
+                        });
+                        return () => unsubscribeSongs();
+                    }
+                });
+
+                return () => unsubscribeAuth();
+            }, []);
+
+            // YouTube API
+            useEffect(() => {
+                if (!window.YT) {
+                    const tag = document.createElement('script');
+                    tag.src = "https://www.youtube.com/iframe_api";
+                    const firstScriptTag = document.getElementsByTagName('script')[0];
+                    firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
+                }
+            }, []);
+
+            const getYouTubeEmbedId = (url) => {
+                if(!url) return null;
+                const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/;
+                const match = url.match(regExp);
+                return (match && match[2].length === 11) ? match[2] : null;
+            };
+
+            useEffect(() => {
+                const videoId = currentSong ? getYouTubeEmbedId(currentSong.sourceUrl) : null;
+
+                if (videoId) {
+                    if (ytPlayer && ytPlayer.loadVideoById) {
+                        ytPlayer.loadVideoById(videoId);
+                        ytPlayer.pauseVideo(); 
+                    } else if (window.YT && window.YT.Player && !ytPlayer) {
+                        if (playerContainerRef.current) {
+                             const newPlayer = new window.YT.Player(playerContainerRef.current, {
+                                height: '1',
+                                width: '1', 
+                                videoId: videoId,
+                                playerVars: {
+                                    'playsinline': 1,
+                                    'controls': 0 
+                                },
+                                events: {
+                                    'onReady': (event) => setYtPlayer(event.target),
+                                    'onStateChange': (event) => {
+                                        setYtIsPlaying(event.data === window.YT.PlayerState.PLAYING);
+                                    }
+                                }
+                            });
+                        }
+                    }
+                } else {
+                    if (ytPlayer && ytPlayer.stopVideo) {
+                        ytPlayer.stopVideo();
+                        setYtIsPlaying(false);
+                    }
+                }
+            }, [currentSong]); 
+
+            window.onYouTubeIframeAPIReady = () => {};
+
+            const toggleYtPlay = () => {
+                if (!ytPlayer) return;
+                if (ytIsPlaying) {
+                    ytPlayer.pauseVideo();
+                } else {
+                    ytPlayer.playVideo();
+                }
+            };
+
+            // Auto Scroll Logic (Only works in 'scroll' mode)
+            useEffect(() => {
+                if (viewMode !== 'scroll') return;
+
+                let animationFrameId;
+                const scroll = () => {
+                    if (scrollContainerRef.current) {
+                        scrollContainerRef.current.scrollTop += (scrollSpeed * 0.3);
+                    }
+                    animationFrameId = requestAnimationFrame(scroll);
+                };
+                if (isScrolling && currentSong) {
+                    animationFrameId = requestAnimationFrame(scroll);
+                }
+                return () => cancelAnimationFrame(animationFrameId);
+            }, [isScrolling, scrollSpeed, currentSong, viewMode]);
+
+            // Spacebar Navigation (Only works in 'paged' mode)
+            useEffect(() => {
+                const handleKeyDown = (e) => {
+                    if (currentSong && viewMode === 'paged' && e.code === 'Space') {
+                        e.preventDefault(); // Prevent scrolling down
+                        nextPage();
+                    }
+                };
+                window.addEventListener('keydown', handleKeyDown);
+                return () => window.removeEventListener('keydown', handleKeyDown);
+            }, [currentSong, viewMode, pageIndex]);
+
+            // Reset state on song change
+            useEffect(() => {
+                if (currentSong) {
+                    const saved = currentSong.savedSpeed !== undefined ? currentSong.savedSpeed : 1;
+                    setScrollSpeed(saved);
+                    setIsScrolling(false);
+                    setPageIndex(0); // Reset page to start
+                    setIsSidebarOpen(false); // Auto collapse sidebar
+                }
+            }, [currentSong]);
+
+            const handleSpeedChange = (newSpeed) => {
+                setScrollSpeed(newSpeed);
+                if (currentSong) {
+                    if (saveSpeedTimeoutRef.current) {
+                        clearTimeout(saveSpeedTimeoutRef.current);
+                    }
+                    saveSpeedTimeoutRef.current = setTimeout(async () => {
+                        try {
+                            const collectionRef = getSongsCollection();
+                            await collectionRef.doc(currentSong.id).update({
+                                savedSpeed: newSpeed
+                            });
+                        } catch (err) {}
+                    }, 1000);
+                }
+            };
+
+            const handleSaveSong = async (songData) => {
+                const collectionRef = getSongsCollection();
+                if (modalMode === 'add') {
+                    await collectionRef.add(songData);
+                } else {
+                    if (editingSong) {
+                        await collectionRef.doc(editingSong.id).update(songData);
+                        if (currentSong && currentSong.id === editingSong.id) {
+                            setCurrentSong({ ...currentSong, ...songData });
+                        }
+                    }
+                }
+            };
+
+            const handleDeleteSong = async (e, songId) => {
+                e.stopPropagation();
+                if (userRole !== 'admin') return;
+                if (!confirm("確定要刪除這首歌嗎？")) return;
+                try {
+                    const collectionRef = getSongsCollection();
+                    await collectionRef.doc(songId).delete();
+                    if (currentSong?.id === songId) setCurrentSong(null);
+                } catch (err) {
+                    alert("刪除失敗");
+                }
+            };
+
+            const openAddModal = () => {
+                setModalMode('add');
+                setEditingSong(null);
+                setIsModalOpen(true);
+            };
+
+            const openEditModal = (e, song) => {
+                e.stopPropagation();
+                setModalMode('edit');
+                setEditingSong(song);
+                setIsModalOpen(true);
+            };
+
+            const filteredSongs = songs.filter(song => {
+                const term = searchTerm.toLowerCase();
+                const title = song.title.toLowerCase();
+                const artist = song.artist.toLowerCase();
+                const isLengthMatch = (song.titleLength || song.title.length).toString() === term;
+                return title.includes(term) || artist.includes(term) || isLengthMatch;
+            });
+
+            // Pagination Logic
+            const getCurrentPageImages = () => {
+                if (!currentSong) return [];
+                const urls = currentSong.tabUrls && currentSong.tabUrls.length > 0 ? currentSong.tabUrls : (currentSong.tabUrl ? [currentSong.tabUrl] : []);
+                
+                if (urls.length <= 1) return urls; // Single page mode
+
+                // Multi-page mode: return 2 images at a time
+                const start = pageIndex;
+                const end = start + 2;
+                return urls.slice(start, end);
+            };
+
+            const nextPage = () => {
+                if (!currentSong) return;
+                const urls = currentSong.tabUrls && currentSong.tabUrls.length > 0 ? currentSong.tabUrls : [];
+                if (pageIndex + 2 < urls.length) {
+                    setPageIndex(pageIndex + 2);
+                } else {
+                    // Loop back to start or stay at end? Let's stay at end to avoid accident reset
+                    // Or maybe loop if user wants to practice loop. Let's loop for convenience.
+                    setPageIndex(0); 
+                }
+            };
+
+            const prevPage = () => {
+                if (pageIndex - 2 >= 0) {
+                    setPageIndex(pageIndex - 2);
+                }
+            };
+
+            if (!userRole) {
+                return <LoginScreen onLogin={setUserRole} />;
+            }
+
+            return (
+                <div className="flex h-screen bg-gray-900 overflow-hidden">
+                    {/* Sidebar */}
+                    <div 
+                        className={`${isSidebarOpen ? 'w-full md:w-96' : 'w-14'} flex-col border-r border-gray-800 bg-gray-900 z-10 flex-shrink-0 transition-all duration-300 ease-in-out overflow-hidden relative`}
+                    >
+                        {/* Collapsed View (Slim Bar) */}
+                        {!isSidebarOpen && (
+                            <div className="h-full flex flex-col items-center pt-4 gap-4">
+                                <button 
+                                    onClick={() => setIsSidebarOpen(true)}
+                                    className="p-2 bg-gray-800 text-indigo-400 rounded-lg hover:bg-gray-700 transition"
+                                    title="展開譜庫"
+                                >
+                                    <Menu size={20} />
+                                </button>
+                                <div className="text-xs text-gray-500 font-bold" style={{ writingMode: 'vertical-rl' }}>
+                                    譜庫列表
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Expanded View */}
+                        <div className={`flex flex-col h-full ${!isSidebarOpen ? 'hidden' : ''}`}>
+                            <div className="p-4 border-b border-gray-800 bg-gray-900">
+                                <div className="flex justify-between items-center mb-4">
+                                    <h1 className="text-xl font-bold text-white flex items-center gap-2">
+                                        <Guitar className="text-indigo-500" /> 
+                                        譜庫
+                                        <span className="text-xs bg-gray-700 text-gray-300 px-2 py-0.5 rounded-full font-normal">
+                                            {songs.length}
+                                        </span>
+                                    </h1>
+                                    <div className="flex gap-2">
+                                        {userRole === 'admin' && (
+                                            <button onClick={openAddModal} className="p-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition shadow-lg">
+                                                <Plus size={18} />
+                                            </button>
+                                        )}
+                                        <button onClick={() => setUserRole(null)} className="p-2 text-gray-500 hover:text-gray-300">
+                                            <LogOut size={18} />
+                                        </button>
+                                        {/* 收摺按鈕 (in header) */}
+                                        <button onClick={() => setIsSidebarOpen(false)} className="p-2 text-gray-500 hover:text-gray-300 md:hidden">
+                                            <X size={18} />
+                                        </button>
+                                    </div>
+                                </div>
+                                <div className="relative">
+                                    <Search className="absolute left-3 top-2.5 text-gray-500" size={18} />
+                                    <input 
+                                        type="text" 
+                                        placeholder="搜尋歌名、歌手或字數(如:4)..." 
+                                        className="w-full bg-gray-800 border border-gray-700 rounded-lg pl-10 pr-4 py-2 text-sm text-white focus:ring-1 focus:ring-indigo-500 outline-none"
+                                        value={searchTerm}
+                                        onChange={(e) => setSearchTerm(e.target.value)}
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="flex-1 overflow-y-auto p-2 space-y-2">
+                                {loading ? (
+                                    <div className="text-center text-gray-500 mt-10">載入中...</div>
+                                ) : filteredSongs.length === 0 ? (
+                                    <div className="text-center text-gray-500 mt-10">
+                                        <p>沒有找到歌曲</p>
+                                        {userRole === 'admin' && <p className="text-xs mt-2">點擊上方 + 新增</p>}
+                                    </div>
+                                ) : (
+                                    filteredSongs.map(song => (
+                                        <div 
+                                            key={song.id}
+                                            onClick={() => {
+                                                setCurrentSong(song);
+                                            }}
+                                            className={`group p-3 rounded-xl cursor-pointer border border-transparent transition-all duration-200 ${currentSong?.id === song.id ? 'bg-indigo-900/30 border-indigo-500/50' : 'hover:bg-gray-800 border-gray-800'}`}
+                                        >
+                                            <div className="flex justify-between items-start">
+                                                <div>
+                                                    <h3 className={`font-semibold ${currentSong?.id === song.id ? 'text-indigo-400' : 'text-gray-200'}`}>{song.title}</h3>
+                                                    <p className="text-sm text-gray-500 mt-0.5">{song.artist}</p>
+                                                </div>
+                                                {userRole === 'admin' && (
+                                                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition">
+                                                        <button onClick={(e) => openEditModal(e, song)} className="p-1.5 text-gray-500 hover:text-indigo-400 transition"><Pencil size={16} /></button>
+                                                        <button onClick={(e) => handleDeleteSong(e, song.id)} className="p-1.5 text-gray-500 hover:text-red-400 transition"><Trash2 size={16} /></button>
+                                                    </div>
+                                                )}
+                                            </div>
+                                            <div className="flex items-center gap-3 mt-2">
+                                                <span className="text-xs text-gray-600 bg-gray-800/50 px-1.5 py-0.5 rounded">字數: {song.titleLength || song.title.length}</span>
+                                                {song.sourceUrl && <Youtube size={12} className="text-gray-600" />}
+                                                {song.savedSpeed && (<span className="text-[10px] text-indigo-500/70 border border-indigo-900/50 px-1 rounded">{song.savedSpeed}x</span>)}
+                                            </div>
+                                        </div>
+                                    ))
+                                )}
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Player Area */}
+                    <div className={`flex-1 flex flex-col h-full relative bg-gray-950 ${!currentSong ? 'hidden md:flex' : 'flex'}`}>
+                        {currentSong ? (
+                            <>
+                                {/* Header */}
+                                <div className="h-16 border-b border-gray-800 bg-gray-900/95 backdrop-blur flex items-center justify-between px-4 md:px-6 z-20 flex-shrink-0">
+                                    <div className="flex items-center gap-4">
+                                        <button onClick={() => setCurrentSong(null)} className="md:hidden text-gray-400 hover:text-white">
+                                            ← 返回
+                                        </button>
+                                        
+                                        <div className="flex flex-col">
+                                            <h2 className="text-lg font-bold text-white truncate max-w-[150px] md:max-w-xs">{currentSong.title}</h2>
+                                            <p className="text-xs text-indigo-400">{currentSong.artist}</p>
+                                        </div>
+                                    </div>
+
+                                    <div className="flex items-center gap-3">
+                                        {/* Play Controls */}
+                                        {currentSong.sourceUrl && getYouTubeEmbedId(currentSong.sourceUrl) && (
+                                            <button 
+                                                onClick={toggleYtPlay}
+                                                className={`flex items-center gap-1 px-3 py-1.5 rounded-full text-sm font-bold transition border ${ytIsPlaying ? 'bg-red-600/20 text-red-400 border-red-600/30' : 'bg-gray-800 text-gray-300 border-gray-700 hover:bg-gray-700'}`}
+                                            >
+                                                {ytIsPlaying ? <Pause size={16} fill="currentColor" /> : <Play size={16} fill="currentColor" />}
+                                                <span className="hidden sm:inline">{ytIsPlaying ? '暫停' : '播放'}</span>
+                                            </button>
+                                        )}
+
+                                        {currentSong.sourceUrl && (
+                                            <a 
+                                                href={currentSong.sourceUrl} 
+                                                target="_blank" 
+                                                rel="noreferrer"
+                                                className="flex items-center gap-2 text-indigo-400 hover:text-indigo-300 text-sm font-medium transition hover:underline"
+                                            >
+                                                <Video size={16} /> 
+                                                <span className="hidden sm:inline">影片: {currentSong.title}</span>
+                                                <span className="sm:hidden">影片</span>
+                                                <ExternalLink size={12} />
+                                            </a>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* Main Content (Tab Display) */}
+                                <div 
+                                    ref={scrollContainerRef}
+                                    className={`flex-1 overflow-y-auto relative bg-gray-950 ${viewMode === 'paged' ? 'no-scrollbar' : 'scroll-smooth'}`}
+                                    style={{ paddingBottom: '0px' }} // Remove padding in paged mode
+                                >
+                                    {/* Hidden YouTube Player */}
+                                    <div className="absolute top-0 left-0 w-0 h-0 overflow-hidden opacity-0 pointer-events-none">
+                                        <div ref={playerContainerRef}></div>
+                                    </div>
+
+                                    {/* ★★★ Tab Render Logic ★★★ */}
+                                    <div className={`w-full h-full flex items-center justify-center ${viewMode === 'scroll' ? 'block pt-4 px-2 pb-32 max-w-4xl mx-auto space-y-4' : 'p-0'}`}>
+                                        
+                                        {/* SCROLL MODE: Stacked */}
+                                        {viewMode === 'scroll' && (
+                                            <>
+                                                {currentSong.tabUrls && currentSong.tabUrls.length > 0 ? (
+                                                    currentSong.tabUrls.map((url, index) => (
+                                                        <img key={index} src={url} alt={`Tab ${index}`} className="w-full h-auto rounded-lg bg-white" />
+                                                    ))
+                                                ) : currentSong.tabUrl ? (
+                                                    <img src={currentSong.tabUrl} alt="Tab" className="w-full h-auto rounded-lg bg-white" />
+                                                ) : (
+                                                    <div className="text-gray-500">無圖片</div>
+                                                )}
+                                            </>
+                                        )}
+
+                                        {/* PAGED MODE: Side-by-Side */}
+                                        {viewMode === 'paged' && (
+                                            <div className="w-full h-full flex items-center justify-center bg-gray-950">
+                                                {(() => {
+                                                    const visibleImages = getCurrentPageImages();
+                                                    if (visibleImages.length === 0) return <div className="text-gray-500">無圖片</div>;
+                                                    
+                                                    // Single Image Layout (Centered)
+                                                    if (visibleImages.length === 1) {
+                                                        return (
+                                                            <div className="w-full h-full flex items-center justify-center p-2">
+                                                                <img src={visibleImages[0]} className="max-w-full max-h-full object-contain rounded-lg shadow-2xl bg-white" />
+                                                            </div>
+                                                        );
+                                                    }
+                                                    
+                                                    // Two Images Layout (Split)
+                                                    return (
+                                                        <div className="w-full h-full flex flex-row">
+                                                            <div className="w-1/2 h-full flex items-center justify-center p-1 border-r border-gray-800">
+                                                                <img src={visibleImages[0]} className="max-w-full max-h-full object-contain rounded-lg bg-white" />
+                                                            </div>
+                                                            <div className="w-1/2 h-full flex items-center justify-center p-1">
+                                                                <img src={visibleImages[1]} className="max-w-full max-h-full object-contain rounded-lg bg-white" />
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })()}
+                                                
+                                                {/* Page Indicator Overlay */}
+                                                {(currentSong.tabUrls?.length > 2) && (
+                                                    <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 bg-gray-800/80 px-3 py-1 rounded-full text-xs text-white">
+                                                        頁數: {pageIndex + 1}-{Math.min(pageIndex + 2, currentSong.tabUrls.length)} / {currentSong.tabUrls.length}
+                                                        <span className="ml-2 text-gray-400">(按空白鍵翻頁)</span>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* Floating Control Bar (Right Bottom) */}
+                                <div className="absolute bottom-6 right-6 z-30 flex flex-col items-end gap-3 animate-fade-in">
+                                    
+                                    {/* View Mode Toggle */}
+                                    <button 
+                                        onClick={() => setViewMode(viewMode === 'paged' ? 'scroll' : 'paged')}
+                                        className="bg-gray-800/90 backdrop-blur border border-gray-700 text-white p-3 rounded-full shadow-lg hover:bg-gray-700 transition flex items-center gap-2"
+                                        title={viewMode === 'paged' ? "切換至自動滾動模式" : "切換至分頁閱讀模式"}
+                                    >
+                                        {viewMode === 'paged' ? <BookOpen size={20} /> : <Scroll size={20} />}
+                                        <span className="text-xs font-bold">{viewMode === 'paged' ? '分頁' : '捲動'}</span>
+                                    </button>
+
+                                    {/* Scroll Controls (Only in Scroll Mode) */}
+                                    {viewMode === 'scroll' && (
+                                        <div className="bg-gray-800/90 backdrop-blur border border-gray-700 p-2 rounded-xl shadow-2xl flex flex-col items-center gap-2 w-auto">
+                                            <div className="text-[10px] text-gray-400 font-medium">
+                                                <span className="text-indigo-400">{scrollSpeed.toFixed(1)}x</span>
+                                            </div>
+                                            
+                                            <input 
+                                                type="range" 
+                                                min="0.5" 
+                                                max="5.0" 
+                                                step="0.1" 
+                                                value={scrollSpeed}
+                                                onChange={(e) => handleSpeedChange(parseFloat(e.target.value))}
+                                                className="h-24 w-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-indigo-500"
+                                                style={{ writingMode: 'bt-lr', WebkitAppearance: 'slider-vertical' }}
+                                            />
+
+                                            <button 
+                                                onClick={() => setIsScrolling(!isScrolling)}
+                                                className={`p-2 rounded-full flex items-center justify-center transition-all ${isScrolling ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30' : 'bg-indigo-600 text-white hover:bg-indigo-500 shadow-lg shadow-indigo-500/30'}`}
+                                                title={isScrolling ? "暫停滾動" : "開始滾動"}
+                                            >
+                                                {isScrolling ? <Pause fill="currentColor" size={16} /> : <Play fill="currentColor" size={16} className="ml-0.5" />}
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
+                            </>
+                        ) : (
+                            <div className="flex-1 flex flex-col items-center justify-center text-gray-500 p-8 text-center">
+                                <div className="bg-gray-900 p-6 rounded-full mb-4 shadow-inner">
+                                    <Guitar size={64} className="text-gray-700" />
+                                </div>
+                                <h2 className="text-2xl font-bold text-gray-300 mb-2">準備好彈唱了嗎？</h2>
+                                <p className="max-w-md mx-auto mb-8">從左側選擇一首歌曲，或是使用管理員模式新增您的第一份吉他譜。</p>
+                                {userRole === 'admin' && (
+                                    <button 
+                                        onClick={openAddModal}
+                                        className="bg-gray-800 hover:bg-gray-700 text-indigo-400 px-6 py-2 rounded-full font-medium transition flex items-center gap-2 border border-gray-700"
+                                    >
+                                        <Plus size={18} /> 新增樂譜
+                                    </button>
+                                )}
+                            </div>
+                        )}
+                    </div>
+
+                    <SongModal 
+                        isOpen={isModalOpen} 
+                        onClose={() => setIsModalOpen(false)} 
+                        onSave={handleSaveSong} 
+                        mode={modalMode}
+                        initialData={editingSong}
+                    />
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
