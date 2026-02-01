@@ -1,11 +1,10 @@
 import React, { useState } from 'react';
 import { X, Calculator, Watch, Music } from 'lucide-react';
 import CapoCalculator from './tools/CapoCalculator';
-import Metronome from './tools/Metronome';
 import ChordLibrary from './tools/ChordLibrary';
 
-const ToolsModal = ({ isOpen, onClose }) => {
-    const [activeTab, setActiveTab] = useState('capo'); // 'capo', 'metronome', 'chords'
+const ToolsModal = ({ isOpen, onClose, onOpenMetronome }) => {
+    const [activeTab, setActiveTab] = useState('capo'); // 'capo', 'chords'
 
     if (!isOpen) return null;
 
@@ -28,8 +27,8 @@ const ToolsModal = ({ isOpen, onClose }) => {
                         <Calculator size={16} /> Capo
                     </button>
                     <button
-                        onClick={() => setActiveTab('metronome')}
-                        className={`flex-1 py-2 rounded-md flex items-center justify-center gap-2 text-sm transition ${activeTab === 'metronome' ? 'bg-indigo-600 text-white shadow' : 'text-gray-400 hover:text-gray-200'}`}
+                        onClick={onOpenMetronome}
+                        className={`flex-1 py-2 rounded-md flex items-center justify-center gap-2 text-sm transition text-gray-400 hover:text-gray-200 hover:bg-gray-800`}
                     >
                         <Watch size={16} /> 節拍器
                     </button>
@@ -44,7 +43,6 @@ const ToolsModal = ({ isOpen, onClose }) => {
                 {/* Content */}
                 <div className="flex-1 overflow-y-auto">
                     {activeTab === 'capo' && <CapoCalculator />}
-                    {activeTab === 'metronome' && <Metronome />}
                     {activeTab === 'chords' && <ChordLibrary />}
                 </div>
             </div>

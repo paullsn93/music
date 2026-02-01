@@ -8,6 +8,8 @@ import Player from './components/Player';
 import SongModal from './components/SongModal';
 import ToolsModal from './components/ToolsModal'; // New
 
+import PersistentMetronome from './components/tools/PersistentMetronome';
+
 const App = () => {
     const [userRole, setUserRole] = useState(null); // 'user', 'admin', or null
     const [songs, setSongs] = useState([]);
@@ -18,6 +20,7 @@ const App = () => {
     // UI States
     const [isSidebarOpen, setIsSidebarOpen] = useState(true);
     const [isToolsOpen, setIsToolsOpen] = useState(false); // New
+    const [isMetronomeOpen, setIsMetronomeOpen] = useState(false); // Persistent Metronome
 
     // Modal States
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -158,7 +161,15 @@ const App = () => {
             <ToolsModal
                 isOpen={isToolsOpen}
                 onClose={() => setIsToolsOpen(false)}
+                onOpenMetronome={() => {
+                    setIsToolsOpen(false);
+                    setIsMetronomeOpen(true);
+                }}
             />
+
+            {isMetronomeOpen && (
+                <PersistentMetronome onClose={() => setIsMetronomeOpen(false)} />
+            )}
         </div>
     );
 };
