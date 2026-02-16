@@ -43,13 +43,21 @@ npm run dev
 ```
 
 ### 2. 環境設定 (.env)
-系統需要 Firebase 設定。請在根目錄建立 `.env` 檔案 (參考實作計畫中的設定)：
+本專案使用 Firebase 作為後端，請在專案根目錄建立 `.env` 檔案並填入以下資訊。該檔案已被列入 `.gitignore`，**請勿將其上傳至公開倉庫**。
 
+**.env 範例格式：**
 ```env
-VITE_FIREBASE_API_KEY=...
-VITE_FIREBASE_AUTH_DOMAIN=...
-# ...其他設定
+VITE_FIREBASE_API_KEY=你的_API_KEY
+VITE_FIREBASE_AUTH_DOMAIN=你的_PROJECT_ID.firebaseapp.com
+VITE_FIREBASE_PROJECT_ID=你的_PROJECT_ID
+VITE_FIREBASE_STORAGE_BUCKET=你的_PROJECT_ID.firebasestorage.app
+VITE_FIREBASE_MESSAGING_SENDER_ID=你的_SENDER_ID
+VITE_FIREBASE_APP_ID=你的_APP_ID
+VITE_FIREBASE_MEASUREMENT_ID=你的_MEASUREMENT_ID
 ```
+
+> [!IMPORTANT]
+> **安全性提醒**：若您的 API Key 曾經上傳至 GitHub，即使之後移除，在 Git 歷史紀錄中可能仍可被找到。建議在 Google Cloud Console 中撤銷 (Revoke) 舊 Key 並產生新 Key，同時設定網域限制。
 
 ### 3. 部署
 ```bash

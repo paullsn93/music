@@ -19,6 +19,7 @@ const PersistentMetronome = ({ onClose }) => {
     const nextNoteTimeRef = useRef(0);
     const timerIDRef = useRef(null);
     const currentBeatRef = useRef(0); // 0 to beatsPerBar-1
+    const isPlayingRef = useRef(false); // Ref for sync access in scheduler
 
     const lookahead = 25.0; // ms
     const scheduleAheadTime = 0.1; // s
@@ -43,16 +44,43 @@ const PersistentMetronome = ({ onClose }) => {
         }
     };
 
-    // --- Audio Engine ---
+    // --- Audio Engine Lifecycle ---
     useEffect(() => {
-        const AudioContext = window.AudioContext || window.webkitAudioContext;
-        // Don't create context until interaction if possible, or create suspended.
-        // But for a metronome, we might as well create it.
-        audioContextRef.current = new AudioContext();
+        // Initialize logic state
+        isPlayingRef.current = isPlaying;
+
+        if (isPlaying) {
+            if (!audioContextRef.current) {
+                audioContextRef.current = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            if (audioContextRef.current.state === 'suspended') {
+                audioContextRef.current.resume();
+            }
+
+            // Start scheduling
+            currentBeatRef.current = 0;
+            nextNoteTimeRef.current = audioContextRef.current.currentTime + 0.1;
+            scheduler();
+        } else {
+            // Stop logic
+            window.clearTimeout(timerIDRef.current);
+        }
 
         return () => {
-            if (timerIDRef.current) window.clearTimeout(timerIDRef.current);
-            if (audioContextRef.current) audioContextRef.current.close();
+            // Cleanup on unmount or toggle
+            window.clearTimeout(timerIDRef.current);
+        };
+    }, [isPlaying]);
+
+    // Global Cleanup on Unmount (Closing the bar)
+    useEffect(() => {
+        return () => {
+            isPlayingRef.current = false;
+            window.clearTimeout(timerIDRef.current);
+            if (audioContextRef.current) {
+                audioContextRef.current.close();
+                audioContextRef.current = null;
+            }
         };
     }, []);
 
@@ -67,39 +95,42 @@ const PersistentMetronome = ({ onClose }) => {
     const playClick = (time, isAccent, isSubdivision = false) => {
         if (!audioContextRef.current) return;
 
+        // STANDARD BEEP (Sine Wave) - Clean & Reliable
+        // No fancy noise, no filters. Just a beep.
+
         const osc = audioContextRef.current.createOscillator();
         const gainNode = audioContextRef.current.createGain();
 
         osc.connect(gainNode);
         gainNode.connect(audioContextRef.current.destination);
 
-        // Sound Design
+        osc.type = 'sine';
+
+        // Standard Metronome Frequencies
         if (isSubdivision) {
-            osc.type = 'square';
-            osc.frequency.value = 600; // Lower pitch for subdivision
+            osc.frequency.setValueAtTime(880, time); // A5
         } else if (isAccent) {
-            osc.type = 'square';
-            osc.frequency.value = 1500; // High pitch acccent
+            osc.frequency.setValueAtTime(1760, time); // A6 (High)
         } else {
-            osc.type = 'square';
-            osc.frequency.value = 1000; // Normal click
+            osc.frequency.setValueAtTime(1320, time); // E6 (Mid)
         }
 
         // Volume Envelope
         const masterVol = volumeRef.current;
-        // Boost gain for 'square' wave to cut through, but respect master volume
-        // Subdivision is quieter
         const peakGain = isSubdivision ? (0.3 * masterVol) : (isAccent ? (1.0 * masterVol) : (0.7 * masterVol));
 
         gainNode.gain.setValueAtTime(0, time);
-        gainNode.gain.linearRampToValueAtTime(peakGain, time + 0.001);
-        gainNode.gain.exponentialRampToValueAtTime(0.001, time + 0.03); // Short, sharp click
+        gainNode.gain.linearRampToValueAtTime(peakGain, time + 0.005); // 5ms Attack
+        gainNode.gain.exponentialRampToValueAtTime(0.001, time + 0.1); // 100ms Decay
 
         osc.start(time);
-        osc.stop(time + 0.05);
+        osc.stop(time + 0.11);
     };
 
     const scheduler = () => {
+        if (!isPlayingRef.current) return; // Safety check
+        if (!audioContextRef.current) return;
+
         // while there are notes that will need to play before the next interval, schedule them
         while (nextNoteTimeRef.current < audioContextRef.current.currentTime + scheduleAheadTime) {
 
@@ -121,19 +152,7 @@ const PersistentMetronome = ({ onClose }) => {
     };
 
     const togglePlay = () => {
-        if (isPlaying) {
-            window.clearTimeout(timerIDRef.current);
-            setIsPlaying(false);
-        } else {
-            if (audioContextRef.current.state === 'suspended') {
-                audioContextRef.current.resume();
-            }
-            // Start slightly in the future
-            nextNoteTimeRef.current = audioContextRef.current.currentTime + 0.05;
-            currentBeatRef.current = 0; // Reset to 1 on start
-            scheduler();
-            setIsPlaying(true);
-        }
+        setIsPlaying(!isPlaying);
     };
 
     // --- Tap Tempo Logic ---
@@ -180,8 +199,8 @@ const PersistentMetronome = ({ onClose }) => {
                     <button
                         onClick={togglePlay}
                         className={`w-12 h-12 rounded-full flex items-center justify-center transition-all shadow-xl hover:scale-105 active:scale-95 ${isPlaying
-                                ? 'bg-gradient-to-br from-red-500 to-red-600 text-white shadow-red-900/40 ring-2 ring-red-400/20'
-                                : 'bg-gradient-to-br from-green-500 to-green-600 text-white shadow-green-900/40 ring-2 ring-green-400/20'
+                            ? 'bg-gradient-to-br from-red-500 to-red-600 text-white shadow-red-900/40 ring-2 ring-red-400/20'
+                            : 'bg-gradient-to-br from-green-500 to-green-600 text-white shadow-green-900/40 ring-2 ring-green-400/20'
                             }`}
                         title={isPlaying ? "停止 (Space)" : "開始 (Space)"}
                     >
@@ -231,8 +250,8 @@ const PersistentMetronome = ({ onClose }) => {
                                     key={sig}
                                     onClick={() => setTimeSignature(sig)}
                                     className={`px-2 py-1 text-xs font-bold rounded flex items-center justify-center transition-all ${timeSignature === sig
-                                            ? 'bg-gray-600 text-white shadow-sm'
-                                            : 'text-gray-500 hover:text-gray-300'
+                                        ? 'bg-gray-600 text-white shadow-sm'
+                                        : 'text-gray-500 hover:text-gray-300'
                                         }`}
                                 >
                                     {sig}
